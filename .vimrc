@@ -64,6 +64,11 @@ map <F2> :NERDTreeToggle<CR>
 " Configure vim-jsx
 let g:jsx_ext_required=0
 
+" Custom Keymapping
+imap <Leader>af () => {}<Left><Enter><Enter><Up><Tab>
+imap <Leader>it it('', );<Left><Left><Leader>af<Up>
+imap <Leader>des describe('', );<Left><Left><Leader>af<Up><Right><Right><Right><Right><Right><Right>
+
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 " MULTIPURPOSE TAB KEY
 " Indent if we're at the beginning of a line. Else, do completion.
