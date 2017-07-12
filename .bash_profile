@@ -10,7 +10,10 @@ txtblu='\e[0;34m' # Blue
 txtpur='\e[0;35m' # Purple
 txtcyn='\e[0;36m' # Cyan
 txtwht='\e[0;37m' # White
- 
+
+# Custom Colors
+txtltgry='\e[0;90m' # Light Gray
+
 bldblk='\e[1;30m' # Black - Bold
 bldred='\e[1;31m' # Red
 bldgrn='\e[1;32m' # Green
@@ -19,7 +22,7 @@ bldblu='\e[1;34m' # Blue
 bldpur='\e[1;35m' # Purple
 bldcyn='\e[1;36m' # Cyan
 bldwht='\e[1;37m' # White
- 
+
 unkblk='\e[4;30m' # Black - Underline
 undred='\e[4;31m' # Red
 undgrn='\e[4;32m' # Green
@@ -28,7 +31,7 @@ undblu='\e[4;34m' # Blue
 undpur='\e[4;35m' # Purple
 undcyn='\e[4;36m' # Cyan
 undwht='\e[4;37m' # White
- 
+
 bakblk='\e[40m'   # Black - Background
 bakred='\e[41m'   # Red
 badgrn='\e[42m'   # Green
@@ -37,50 +40,74 @@ bakblu='\e[44m'   # Blue
 bakpur='\e[45m'   # Purple
 bakcyn='\e[46m'   # Cyan
 bakwht='\e[47m'   # White
- 
+
 txtrst='\e[0m'    # Text Reset
 
 #===============================
 # Aliases
 #===============================
 
-alias mysql=/usr/local/mysql/bin/mysql
+#alias mysql=/usr/local/mysql/bin/mysql
+
+# Publicator Aliases
+alias publicator="cd ~/dev/publicator && vagrant up && vagrant ssh"
+
+# Reload tmux
+alias remux="tmux source-file ~/.tmux.conf"
 
 #===============================
 # Default Path
 #===============================
 
-PATH=/Users/jordanforeman/bin:/Users/jordanforeman/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local
+PATH=/Users/$(whoami)/bin:/Users/$(whoami)/sbin:$PATH
+PATH=/usr/bin:/usr/sbin:/usr/local:/bin:/sbin:$PATH
+PATH=/opt/local/bin:/opt/local/sbin:$PATH
+PATH=/usr/local/mysql/bin:$PATH
 
 #===============================
 # Custom Packages
 #===============================
-
-# MAMP PHP
-PATH=/Applications/MAMP/bin/php/php5.4.10/bin:$PATH
-
-# MongoDB
-PATH=/usr/local/mongodb/bin:$PATH
 
 export PATH
 
 [[ -s "$HOME/.rvm/scripts/rvm" ]] && source "$HOME/.rvm/scripts/rvm" # Load RVM into a shell session *as a function*
 
 #===============================
-# Custom Bash
+# Custom Bash Prompt
 #===============================
+#the_path() {
+#	printf "\n$txtgrn%s$txtwht:$txtylw%s - $txtpur[%s] \n" "$USER" "${PWD##*/}" "$(vcprompt)"
+#}
 
-the_path() {
-	printf "\n$txtgrn%s$txtwht:$txtylw%s - $txtpur[%s] \n" "$USER" "${PWD##*/}" "$(vcprompt)"
-}
+#PROMPT_COMMAND=the_path
+#PS1="$txtwht$ "
 
-PROMPT_COMMAND=the_path
-PS1="$txtwht$ "
+# Terminal Settings
+export CLICOLOR=1
+export LSCOLORS=ExFxBxDxCxegedabagacad
+alias ls='ls -GFh'
+
+# Configure Prompt
+PS1="$bakblk"     # Background Color
+PS1=$PS1"\n" 	  # New Line
+PS1=$PS1"$txtgrn"
+PS1=$PS1"👨‍💻  \u@\h" # User Details (green)
+PS1=$PS1"$txtltgry ⚡  " # Separator
+PS1=$PS1"$txtylw""\w " # PWD
+PS1=$PS1"$txtcyn""$(vcprompt -f %b)" # Git branch
+PS1=$PS1"\n" # New Line
+#PS1=$PS1"$txtltgry"$'↪'
+PS1=$PS1"👉  "
+PS1=$PS1"$txtwht "
+
+#===============================
+# NODE ENV
+#===============================
+export NODE_ENV=localhost
 
 #===============================
 # Custom Functions
 #===============================
-
 function path() {
 	old=$IFS
 	IFS=:
