@@ -16,6 +16,9 @@ syntax enable
 colorscheme snazzy
 highlight NonText ctermfg=LightGray
 highlight Normal ctermfg=LightGray ctermbg=235
+highlight TabLineFill ctermfg=255 ctermbg=61
+highlight TabLineSel ctermfg=255 ctermbg=65
+highlight TabLine ctermfg=255 ctermbg=61
 
 " Maximize window on startup
 au GUIEnter * simalt ~x
