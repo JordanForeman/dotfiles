@@ -44,18 +44,6 @@ bakwht='\e[47m'   # White
 txtrst='\e[0m'    # Text Reset
 
 #===============================
-# Aliases
-#===============================
-
-#alias mysql=/usr/local/mysql/bin/mysql
-
-# Publicator Aliases
-alias publicator="cd ~/dev/publicator && vagrant up && vagrant ssh"
-
-# Reload tmux
-alias remux="tmux source-file ~/.tmux.conf"
-
-#===============================
 # Default Path
 #===============================
 
@@ -75,43 +63,28 @@ export PATH
 #===============================
 # Custom Bash Prompt
 #===============================
-#the_path() {
-#	printf "\n$txtgrn%s$txtwht:$txtylw%s - $txtpur[%s] \n" "$USER" "${PWD##*/}" "$(vcprompt)"
-#}
-
-#PROMPT_COMMAND=the_path
-#PS1="$txtwht$ "
 
 # Terminal Settings
 export CLICOLOR=1
 export LSCOLORS=ExFxBxDxCxegedabagacad
 alias ls='ls -GFh'
 
+# Custom Functions
+function parse_git_branch() {
+    git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
+}
+
 # Configure Prompt
 PS1="$bakblk"     # Background Color
 PS1=$PS1"\n" 	  # New Line
 PS1=$PS1"$txtgrn"
-PS1=$PS1"👨‍💻  \u@\h" # User Details (green)
-PS1=$PS1"$txtltgry ⚡  " # Separator
-PS1=$PS1"$txtylw""\w " # PWD
-PS1=$PS1"$txtcyn""$(vcprompt -f %b)" # Git branch
+PS1=$PS1"👨‍💻 \u@\h" # User Details (green)
+PS1=$PS1"$txtltgry   " # Separator
+PS1=$PS1"$txtylw""\w" # PWD
+PS1=$PS1"$txtcyn""$(parse_git_branch)" # Git branch
 PS1=$PS1"\n" # New Line
-#PS1=$PS1"$txtltgry"$'↪'
-PS1=$PS1"👉  "
-PS1=$PS1"$txtwht "
+PS1=$PS1"$txtwht"$'⚡  '
 
-#===============================
-# NODE ENV
-#===============================
-export NODE_ENV=localhost
-
-#===============================
-# Custom Functions
-#===============================
-function path() {
-	old=$IFS
-	IFS=:
-	printf "%s\n" $PATH
-	IFS=old
-}
-
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion

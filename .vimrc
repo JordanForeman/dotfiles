@@ -13,13 +13,9 @@ set backspace=indent,eol,start
 
 " Color Scheme
 syntax enable
-colorscheme synthwave
+colorscheme snazzy
 highlight NonText ctermfg=LightGray
-
-" Font settings
-"set guifont=Consolas:h12
-set guifont=Inconsolata:h14
-"set guifont=DejaVu\ Sans\ Mono:h12
+highlight Normal ctermfg=LightGray ctermbg=black
 
 " Maximize window on startup
 au GUIEnter * simalt ~x
@@ -48,12 +44,10 @@ let g:ctrlp_working_path_mode=0
 let g:ctrlp_custom_ignore='node_modules\|DS_STORE\|git\|coverage\|lib'
 
 " Configure SwapFile location
-"set swapfile
-"set dir=/tmp
 set backup
-set backupdir=C:\tmp
-set backupskip=C:\tmp\*
-set directory=C:\tmp
+set backupdir=/tmp
+set backupskip=/tmp/*
+set directory=/tmp
 set writebackup
 
 " Configure NerdTree
