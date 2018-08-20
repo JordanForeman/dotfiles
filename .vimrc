@@ -15,7 +15,7 @@ set backspace=indent,eol,start
 syntax enable
 colorscheme snazzy
 highlight NonText ctermfg=LightGray
-highlight Normal ctermfg=LightGray ctermbg=black
+highlight Normal ctermfg=LightGray ctermbg=235
 
 " Maximize window on startup
 au GUIEnter * simalt ~x
