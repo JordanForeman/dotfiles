@@ -61,7 +61,6 @@ export PATH
 [[ -s "$HOME/.rvm/scripts/rvm" ]] && source "$HOME/.rvm/scripts/rvm" # Load RVM into a shell session *as a function*
 
 #===============================
-# Custom Bash Prompt
 #===============================
 
 # Terminal Settings
@@ -75,16 +74,29 @@ function parse_git_branch() {
 }
 
 # Configure Prompt
-PS1="$bakblk"     # Background Color
-PS1=$PS1"\n" 	  # New Line
-PS1=$PS1"$txtgrn"
-PS1=$PS1"👨‍💻 \u@\h" # User Details (green)
-PS1=$PS1"$txtltgry   " # Separator
-PS1=$PS1"$txtylw""\w" # PWD
-PS1=$PS1"$txtcyn""$(parse_git_branch)" # Git branch
-PS1=$PS1"\n" # New Line
-PS1=$PS1"$txtwht"$'⚡  '
+set_prompt() {
+    PS1="$bakblk"     # Background Color
+    PS1=$PS1"\n" 	  # New Line
+    PS1=$PS1"$txtgrn"
+    PS1=$PS1"👨‍💻 \u@\h" # User Details (green)
+    PS1=$PS1"$txtltgry   " # Separator
+    PS1=$PS1"$txtylw""\w" # PWD
+    PS1=$PS1"$txtcyn""$(parse_git_branch)" # Git branch
+    PS1=$PS1"\n" # New Line
+    PS1=$PS1"$txtwht"$'⚡  '
+}
+PROMPT_COMMAND=set_prompt
 
+#===============================
+# NVM
+#===============================
 export NVM_DIR="$HOME/.nvm"
+. "/usr/local/opt/nvm/nvm.sh"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+
+#===============================
+# Custom Aliases
+#===============================
+alias cls='clear' # Old habits die hard
