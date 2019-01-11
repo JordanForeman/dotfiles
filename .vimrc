@@ -20,6 +20,14 @@ highlight TabLineFill ctermfg=255 ctermbg=61
 highlight TabLineSel ctermfg=255 ctermbg=65
 highlight TabLine ctermfg=255 ctermbg=61
 
+" Vim GitGutter
+highlight GitGutterChange ctermfg=75 ctermbg=NONE
+highlight GitGutterDelete ctermfg=160 ctermbg=NONE
+highlight GitGutterAdd ctermfg=78 ctermbg=NONE
+let g:gitgutter_sign_added='+'
+let g:gitgutter_sign_removed='-'
+let g:gitgutter_sign_modified='~'
+
 " Maximize window on startup
 au GUIEnter * simalt ~x
 
@@ -28,6 +36,8 @@ set guioptions-=m
 set guioptions-=T
 set guioptions-=r
 set guioptions-=L
+
+set updatetime=100
 
 " Show Line Numbers
 set number
