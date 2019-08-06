@@ -1,0 +1,7 @@
+.mtk16, .mtk3, .mtk5, .mtk1 {
+  font-family: 'Fira Code';
+}
+
+.mtk3, .mtk4, .mtk11 {
+  font-style: italic;
+}
