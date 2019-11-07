@@ -30,13 +30,15 @@ alias ls='ls -GFh'
 #===============================
 
 function parse_git_branch() {
-    BRANCH_NAME=$(git branch | grep \* | cut -d ' ' -f2)
-    CHANGED=$(git status --porcelain)
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        BRANCH_NAME=$(git branch | grep \* | cut -d ' ' -f2)
+        CHANGED=$(git status --porcelain)
 
-    if [ -n "${CHANGED}" ]; then
-        echo "$BRANCH_NAME*";
-    else
-        echo "$BRANCH_NAME";
+        if [ -n "${CHANGED}" ]; then
+            echo "$BRANCH_NAME*";
+        else
+            echo "$BRANCH_NAME";
+        fi
     fi
 }
 
