@@ -30,7 +30,14 @@ alias ls='ls -GFh'
 #===============================
 
 function parse_git_branch() {
-    git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
+    BRANCH_NAME=$(git branch | grep \* | cut -d ' ' -f2)
+    CHANGED=$(git status --porcelain)
+
+    if [ -n "${CHANGED}" ]; then
+        echo "$BRANCH_NAME*";
+    else
+        echo "$BRANCH_NAME";
+    fi
 }
 
 function parse_npm_version() {
@@ -50,10 +57,10 @@ set_prompt() {
     PS1=$PS1"$txtgrn"
     PS1=$PS1"👨‍💻 " # User Details (green)
     PS1=$PS1"$txtylw""\w" # PWD
-    PS1=$PS1"$txtcyn""$(parse_git_branch)" # Git branch
+    PS1=$PS1"$txtcyn"" $(parse_git_branch)" # Git branch
     PS1=$PS1"$txtgrn"" $(parse_npm_version)" # NPM Package
     PS1=$PS1"\n" # New Line
-    PS1=$PS1"$txtwht""$ "
+    PS1=$PS1"$txtwht""> "
 }
 PROMPT_COMMAND=set_prompt
 
