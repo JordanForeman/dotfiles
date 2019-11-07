@@ -51,7 +51,7 @@ set_prompt() {
     PS1=$PS1"👨‍💻 " # User Details (green)
     PS1=$PS1"$txtylw""\w" # PWD
     PS1=$PS1"$txtcyn""$(parse_git_branch)" # Git branch
-    PS1=$PS1"$txtylw"" $(parse_npm_version)" # NPM Package
+    PS1=$PS1"$txtgrn"" $(parse_npm_version)" # NPM Package
     PS1=$PS1"\n" # New Line
     PS1=$PS1"$txtwht""$ "
 }
