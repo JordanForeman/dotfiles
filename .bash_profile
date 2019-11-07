@@ -26,11 +26,18 @@ export LSCOLORS=ExFxBxDxCxegedabagacad
 alias ls='ls -GFh'
 
 #===============================
-# Custom Functions
+# Custom Prompt Functions
 #===============================
 
 function parse_git_branch() {
     git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/ (\1)/'
+}
+
+function parse_npm_version() {
+    if test -f package.json; then
+        PACKAGE_VERSION=$(node -pe "require('./package.json').version")
+        echo "📦 $PACKAGE_VERSION"
+    fi
 }
 
 #===============================
@@ -44,6 +51,7 @@ set_prompt() {
     PS1=$PS1"👨‍💻 " # User Details (green)
     PS1=$PS1"$txtylw""\w" # PWD
     PS1=$PS1"$txtcyn""$(parse_git_branch)" # Git branch
+    PS1=$PS1"$txtylw"" $(parse_npm_version)" # NPM Package
     PS1=$PS1"\n" # New Line
     PS1=$PS1"$txtwht""$ "
 }
