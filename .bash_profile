@@ -8,6 +8,10 @@ txtylw='\e[0;33m' # Yellow
 txtwht='\e[0;37m' # White
 txtcyn='\e[0;36m' # Cyan
 
+bldgrn='\e[1;32m' # Green
+bldylw='\e[1;33m' # Yellow
+bldred='\e[1;31m' # Red
+
 #===============================
 # Default Path
 #===============================
@@ -62,7 +66,8 @@ set_prompt() {
     PS1=$PS1"$txtcyn"" $(parse_git_branch)" # Git branch
     PS1=$PS1"$txtgrn"" $(parse_npm_version)" # NPM Package
     PS1=$PS1"\n" # New Line
-    PS1=$PS1"$txtwht""> "
+    PS1=$PS1"$bldred"">""$bldylw"">""$bldgrn""> "
+    PS1=$PS1"$txtwht"
 }
 PROMPT_COMMAND=set_prompt
 
