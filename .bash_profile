@@ -40,9 +40,9 @@ function parse_git_branch() {
         CHANGED=$(git status --porcelain)
 
         if [ -n "${CHANGED}" ]; then
-            echo "$BRANCH_NAME*";
+            echo "$txtcyn $BRANCH_NAME*";
         else
-            echo "$BRANCH_NAME";
+            echo "$txtcyn $BRANCH_NAME";
         fi
     fi
 }
@@ -50,14 +50,20 @@ function parse_git_branch() {
 function parse_npm_version() {
     if test -f package.json; then
         PACKAGE_VERSION=$(node -pe "require('./package.json').version")
-        echo "📦 $PACKAGE_VERSION"
+        echo "$txtgrn 📦 $PACKAGE_VERSION"
     fi
 }
 
 function parse_aws_profile() {
     if command -v aws >/dev/null 2>&1; then
         [[ -z $AWS_PROFILE ]] || [[ "$AWS_PROFILE" == "default" ]] && return
-        echo "☁️  $AWS_PROFILE"
+        echo "$txtong ☁️  $AWS_PROFILE"
+    fi
+}
+
+function parse_node_version() {
+    if command -v nvm >/dev/null 2>&1; then
+        echo "$txtgrn ⬢ $(nvm current)"
     fi
 }
 
@@ -71,9 +77,11 @@ set_prompt() {
     PS1=$PS1"$txtgrn"
     PS1=$PS1"👨‍💻 " # User Details (green)
     PS1=$PS1"$txtylw""\w" # PWD
-    PS1=$PS1"$txtcyn"" $(parse_git_branch)" # Git branch
-    PS1=$PS1"$txtgrn"" $(parse_npm_version)" # NPM Package
-    PS1=$PS1"$txtong"" $(parse_aws_profile)" # AWS Profile
+    PS1=$PS1"$(parse_git_branch)" # Git branch
+    PS1=$PS1"$txtwht |" # New Line
+    PS1=$PS1"$(parse_npm_version)" # NPM Package
+    PS1=$PS1"$(parse_aws_profile)" # AWS Profile
+    PS1=$PS1"$(parse_node_version)" # Node Version
     PS1=$PS1"\n" # New Line
     PS1=$PS1"$bldred"">""$bldylw"">""$bldgrn""> "
     PS1=$PS1"$txtwht"
