@@ -91,4 +91,9 @@ export NVM_DIR="$HOME/.nvm"
 #===============================
 # GPG
 #===============================
-export GPG_TTY=$(tty)¬
+export GPG_TTY=$(tty)
+
+#===============================
+# Setup Environment
+#===============================
+source ~/.profile
