@@ -7,6 +7,7 @@ txtgrn='\e[0;32m' # Green
 txtylw='\e[0;33m' # Yellow
 txtwht='\e[0;37m' # White
 txtcyn='\e[0;36m' # Cyan
+txtong='\033[0;0;0;38;5;214m\]'
 
 bldgrn='\e[1;32m' # Green
 bldylw='\e[1;33m' # Yellow
@@ -53,6 +54,13 @@ function parse_npm_version() {
     fi
 }
 
+function parse_aws_profile() {
+    if command -v aws >/dev/null 2>&1; then
+        [[ -z $AWS_PROFILE ]] || [[ "$AWS_PROFILE" == "default" ]] && return
+        echo "☁️  $AWS_PROFILE"
+    fi
+}
+
 #===============================
 # Configure Prompt
 #===============================
@@ -65,6 +73,7 @@ set_prompt() {
     PS1=$PS1"$txtylw""\w" # PWD
     PS1=$PS1"$txtcyn"" $(parse_git_branch)" # Git branch
     PS1=$PS1"$txtgrn"" $(parse_npm_version)" # NPM Package
+    PS1=$PS1"$txtong"" $(parse_aws_profile)" # AWS Profile
     PS1=$PS1"\n" # New Line
     PS1=$PS1"$bldred"">""$bldylw"">""$bldgrn""> "
     PS1=$PS1"$txtwht"
