@@ -7,7 +7,8 @@ txtgrn='\e[0;32m' # Green
 txtylw='\e[0;33m' # Yellow
 txtwht='\e[0;37m' # White
 txtcyn='\e[0;36m' # Cyan
-txtong='\033[0;0;0;38;5;214m\]'
+txtpur='\e[0;35m' # Purple
+txtong='\033[0;0;0;38;5;214m\]' # Orange
 
 bldgrn='\e[1;32m' # Green
 bldylw='\e[1;33m' # Yellow
@@ -50,7 +51,7 @@ function parse_git_branch() {
 function parse_npm_version() {
     if test -f package.json; then
         PACKAGE_VERSION=$(node -pe "require('./package.json').version")
-        echo "$txtgrn 📦 $PACKAGE_VERSION"
+        echo "$txtpur 📦 $PACKAGE_VERSION"
     fi
 }
 
@@ -78,7 +79,7 @@ set_prompt() {
     PS1=$PS1"👨‍💻 " # User Details (green)
     PS1=$PS1"$txtylw""\w" # PWD
     PS1=$PS1"$(parse_git_branch)" # Git branch
-    PS1=$PS1"$txtwht |" # Divider
+    PS1=$PS1"$txtwht |" # New Line
     PS1=$PS1"$(parse_npm_version)" # NPM Package
     PS1=$PS1"$(parse_aws_profile)" # AWS Profile
     PS1=$PS1"$(parse_node_version)" # Node Version
