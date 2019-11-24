@@ -51,6 +51,7 @@ function parse_git_branch() {
 function parse_npm_version() {
     if test -f package.json; then
         PACKAGE_VERSION=$(node -pe "require('./package.json').version")
+        [[ -z $PACKAGE_VERSION ]] || [[ "$PACKAGE_VERSION" == "undefined" ]] && return
         echo "$txtpur 📦 $PACKAGE_VERSION"
     fi
 }
