@@ -18,10 +18,11 @@ bldred='\e[1;31m' # Red
 # Default Path
 #===============================
 
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
 PATH=/Users/$(whoami)/bin:/Users/$(whoami)/sbin:$PATH
-PATH=/usr/bin:/usr/sbin:/usr/local:/bin:/sbin:$PATH
-PATH=/opt/local/bin:/opt/local/sbin:$PATH
+PATH=/usr/local/bin:/usr/local/sbin:$PATH
 PATH=/usr/local/mysql/bin:$PATH
+PATH=/opt/local/bin:/opt/local/sbin:$PATH
 
 #===============================
 # Terminal Settings
