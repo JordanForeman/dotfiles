@@ -10,4 +10,4 @@ do
     fi
 done
 
-exec $SHELL
+source ~/.zshrc
