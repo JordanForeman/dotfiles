@@ -111,3 +111,6 @@ export NVM_DIR="/Users/jordan/.nvm"
 if [ -f ~/.aliases ]; then
     . ~/.aliases
 fi
+
+# Local settings
+source ~/.profile
