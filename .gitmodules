@@ -1,11 +1,11 @@
 [submodule "ctrlp.vim"]
-    path = .vim/pack/ctrlp.vim
+    path = .vim/pack/vendor/start/ctrlp.vim
     url = git@github.com:kien/ctrlp.vim.git
 
 [submodule "nerdtree"]
-    path = .vim/pack/nerdtree
+    path = .vim/pack/vendor/start/nerdtree
     url = git@github.com:preservim/nerdtree.git
 
 [submodule "vim-snazzy"]
-    path = .vim/pack/vim-snazzy
+    path = .vim/pack/vendor/start/vim-snazzy
     url = git@github.com:connorholyday/vim-snazzy.git
