@@ -1,8 +1,0 @@
-let g:netrw_dirhistmax  =10
-let g:netrw_dirhist_cnt =6
-let g:netrw_dirhist_1='/Users/jordan/dev/session-manager'
-let g:netrw_dirhist_2='/Users/jordan/dev/session-manager/src'
-let g:netrw_dirhist_3='/Users/jordan/dev/session-manager'
-let g:netrw_dirhist_4='/Users/jordan/dev/pub/mobile'
-let g:netrw_dirhist_5='/Users/jordan/dev/pub/lambda'
-let g:netrw_dirhist_6='/Users/jordan/dev/pub/lambda/update-feed'

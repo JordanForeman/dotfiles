@@ -84,7 +84,6 @@
             "value": "#42b883"
         }
     ],
-    "workbench.activityBar.visible": false,
     "workbench.statusBar.visible": true,
     "peacock.affectActivityBar": false,
     "peacock.vslsShareColor": "#42b883",
@@ -93,5 +92,6 @@
         "**/.project": true,
         "**/.settings": true,
         "**/.factorypath": true
-    }
+    },
+    "workbench.activityBar.location": "hidden"
 }
