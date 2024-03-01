@@ -15,7 +15,7 @@ dotfiles=(
 for file in "${dotfiles[@]}"; do
     # Create a symlink in the home directory, pointing to the current file
     echo "Creating symlink for $file"
-    ln -s "$(pwd)/$file" "$HOME/$file"
+    ln -sf "$(pwd)/$file" "$HOME/$file"
 done
 
 echo "Symlinks created successfully"
