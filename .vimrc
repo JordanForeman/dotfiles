@@ -1,6 +1,3 @@
-" Install Pathogen
-execute pathogen#infect()
-
 " Tab Config
 set expandtab
 set tabstop=4
@@ -13,7 +10,6 @@ set backspace=indent,eol,start
 
 " Color Scheme
 syntax enable
-colorscheme snazzy
 highlight NonText ctermfg=LightGray
 highlight Normal ctermfg=LightGray ctermbg=235
 highlight TabLineFill ctermfg=255 ctermbg=61
