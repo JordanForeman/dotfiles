@@ -2,12 +2,12 @@
 
 # List of dotfiles to symlink
 dotfiles=(
-    ".vscode/settings.json",
-    ".vscode/styles.css",
-    ".zshrc",
-    ".aliases",
-    ".vimrc",
-    ".tmux.conf",
+    ".vscode/settings.json"
+    ".vscode/styles.css"
+    ".zshrc"
+    ".aliases"
+    ".vimrc"
+    ".tmux.conf"
     ".vim"
 )
 
