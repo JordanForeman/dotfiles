@@ -26,4 +26,5 @@ brew install \
     tor \
     colima \
     spaceship \
-    gh
+    gh \
+    git-delta
