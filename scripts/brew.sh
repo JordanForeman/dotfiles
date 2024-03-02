@@ -22,7 +22,7 @@ brew install \
     openssl \
     node \
     nvm \
-    exa \
+    eza \
     tor \
     colima \
     spaceship \
