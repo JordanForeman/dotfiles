@@ -4,7 +4,13 @@
     "editor.fontSize": 15,
     "workbench.colorTheme": "Snazzy Operator",
     "workbench.iconTheme": "material-icon-theme",
+    "workbench.startupEditor": "none",
     "workbench.statusBar.visible": false,
+    "editor.minimap.enabled": false,
+    "breadcrumbs.enabled": false,
+    "workbench.editor.enablePreview": false,
+    "workbench.activityBar.location": "top",
+    "workbench.layoutControl.enabled": false,
     "peacock.affectActivityBar": false,
     "peacock.vslsShareColor": "#42b883",
     "files.exclude": {
@@ -13,6 +19,20 @@
         "**/.settings": true,
         "**/.factorypath": true
     },
-    "workbench.activityBar.location": "top",
-    "editor.tabSize": 2
+    "debug.toolBarLocation": "commandCenter",
+    "editor.tabSize": 2,
+    "editor.indentSize": "tabSize",
+    "[ruby]": {
+        "editor.defaultFormatter": "Shopify.ruby-lsp",
+        "editor.formatOnSave": true,
+        "editor.formatOnType": true,
+        "editor.insertSpaces": true,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "files.trimFinalNewlines": true,
+        "editor.rulers": [
+            120
+        ],
+        "editor.semanticHighlighting.enabled": true
+    },
 }
