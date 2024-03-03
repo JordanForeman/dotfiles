@@ -12,6 +12,7 @@ extensions=(
   shopify.ruby-extensions-pack
   shopify.ruby-lsp
   sorbet.sorbet-vscode-extension
+  yoavbls.pretty-ts-errors
 )
 
 for extension in "${extensions[@]}"; do
