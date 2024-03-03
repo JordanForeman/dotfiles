@@ -1,0 +1,18 @@
+{
+    "editor.fontFamily": "Operator Mono, Fira Code",
+    "editor.fontLigatures": true,   
+    "editor.fontSize": 15,
+    "workbench.colorTheme": "Snazzy Operator",
+    "workbench.iconTheme": "material-icon-theme",
+    "workbench.statusBar.visible": false,
+    "peacock.affectActivityBar": false,
+    "peacock.vslsShareColor": "#42b883",
+    "files.exclude": {
+        "**/.classpath": true,
+        "**/.project": true,
+        "**/.settings": true,
+        "**/.factorypath": true
+    },
+    "workbench.activityBar.location": "top",
+    "editor.tabSize": 2
+}
