@@ -16,8 +16,8 @@ do
 done
 
 # Check if the current OS is macOS
-if [[ "$(uname)" == "Darwin" ]]; then
-    if [[ "$WITH_CASK" == "--with-cask" ]]; then
+if [[ "$WITH_CASK" == "--with-cask" ]]; then
+    if [[ "$(uname)" == "Darwin" ]]; then
         echo "Installing Homebrew Casks..."
 
         # Check if Homebrew is installed

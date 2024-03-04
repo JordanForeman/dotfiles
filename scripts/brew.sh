@@ -9,7 +9,7 @@ then
     if [[ "$(uname)" == "Linux" ]]; then
         test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
         test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-        echo "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" >> ~/.profile
+        write_to_file "eval \"\$($(brew --prefix)/bin/brew shellenv)\"" ~/.profile
     fi
 else
     echo "🍺 Homebrew is already installed."
