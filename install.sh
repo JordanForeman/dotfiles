@@ -3,8 +3,8 @@
 touch ~/.profile
 
 write_to_file() {
-    local file="$1"
-    local line="$2"
+    local line="$1"
+    local file="$2"
     grep -qxF "$line" "$file" || echo "$line" >> "$file"
 }
 # Export the function so it is globally available

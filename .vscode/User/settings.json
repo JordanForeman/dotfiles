@@ -35,4 +35,5 @@
         ],
         "editor.semanticHighlighting.enabled": true
     },
+    "extensions.ignoreRecommendations": true,
 }
