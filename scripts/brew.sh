@@ -27,4 +27,5 @@ brew install \
     colima \
     spaceship \
     gh \
-    git-delta
+    git-delta \
+    ripgrep
