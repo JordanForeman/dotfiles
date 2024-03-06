@@ -6,6 +6,6 @@ fi
 write_to_file "source "$(pwd)"/ext/zsh-autocomplete/zsh-autocomplete.plugin.zsh" ~/.profile
 
 if [ ! -d "./ext/zsh-autocomplete" ] ; then
-  git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+  git clone https://github.com/zsh-users/zsh-autosuggestions ./ext/zsh-autosuggestions
 fi
 write_to_file "source $(pwd)/ext/zsh-autosuggestions/zsh-autosuggestions.zsh" ~/.profile

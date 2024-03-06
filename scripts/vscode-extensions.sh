@@ -13,6 +13,7 @@ extensions=(
   shopify.ruby-lsp
   sorbet.sorbet-vscode-extension
   yoavbls.pretty-ts-errors
+  ms-vscode.vscode-speech
 )
 
 for extension in "${extensions[@]}"; do
