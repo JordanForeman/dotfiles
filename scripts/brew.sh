@@ -28,4 +28,5 @@ brew install \
     spaceship \
     gh \
     git-delta \
-    ripgrep
+    ripgrep \
+    asdf

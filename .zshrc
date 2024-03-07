@@ -19,6 +19,9 @@ fi
 SPACESHIP_PROMPT_ASYNC=false
 source $(brew --prefix)/opt/spaceship/spaceship.zsh
 
+# ASDF
+. $(brew --prefix asdf)/libexec/asdf.sh
+
 # 🧑‍💻 NVM Configuration
 export NVM_DIR="/Users/jordan/.nvm"
 [ -s "/usr/local/opt/nvm/nvm.sh" ] && \. "/usr/local/opt/nvm/nvm.sh"
