@@ -9,6 +9,7 @@ dotfiles=(
     ".tmux.conf"
     ".vim"
     ".gitconfig"
+    ".asdfrc"
 )
 
 # Loop through each file
