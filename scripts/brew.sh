@@ -29,4 +29,5 @@ brew install \
     gh \
     git-delta \
     ripgrep \
-    asdf
+    asdf \
+    pandoc
