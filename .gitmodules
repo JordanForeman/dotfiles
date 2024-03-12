@@ -9,3 +9,11 @@
 [submodule "vim-snazzy"]
     path = .vim/pack/vendor/start/vim-snazzy
     url = git@github.com:connorholyday/vim-snazzy.git
+
+[submodule "zsh-autocomplete"]
+    path = ext/zsh-autocomplete
+    url = git@github.com:marlonrichert/zsh-autocomplete.git
+
+[submodule "zsh-autosuggestions"]
+    path = ext/zsh-autosuggestions
+    url = git@github.com:zsh-users/zsh-autosuggestions.git
