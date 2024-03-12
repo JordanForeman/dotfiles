@@ -17,3 +17,7 @@
 [submodule "zsh-autosuggestions"]
     path = ext/zsh-autosuggestions
     url = git@github.com:zsh-users/zsh-autosuggestions.git
+
+[submodule "tmux-plugin-manager"]
+    path = .tmux/plugins/tpm
+    url = git@github.com:tmux-plugins/tpm.git

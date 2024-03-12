@@ -7,6 +7,7 @@ dotfiles=(
     ".aliases"
     ".vimrc"
     ".tmux.conf"
+    ".tmux"
     ".vim"
     ".gitconfig"
     ".asdfrc"
