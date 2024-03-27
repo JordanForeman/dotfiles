@@ -10,6 +10,10 @@
     path = .vim/pack/vendor/start/vim-snazzy
     url = git@github.com:connorholyday/vim-snazzy.git
 
+[submodule "copilot"]
+    path = .vim/pack/vendor/start/copilot.vim
+    url = git@github.com:github/copilot.vim
+
 [submodule "zsh-autocomplete"]
     path = ext/zsh-autocomplete
     url = git@github.com:marlonrichert/zsh-autocomplete.git
