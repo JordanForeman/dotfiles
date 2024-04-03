@@ -1,6 +1,6 @@
 [submodule "ctrlp.vim"]
     path = .vim/pack/vendor/start/ctrlp.vim
-    url = git@github.com:kien/ctrlp.vim.git
+    url = git@github.com:ctrlpvim/ctrlp.vim.git
 
 [submodule "nerdtree"]
     path = .vim/pack/vendor/start/nerdtree
