@@ -10,6 +10,7 @@ setup_opencommit() {
     fi
 
     echo "OCO_OPENAI_API_KEY=$api_key" >> "$HOME/.opencommit"
+    git update-index --skip-worktree .opencommit
   fi
 }
 
