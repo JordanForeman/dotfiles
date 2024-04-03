@@ -8,8 +8,12 @@ set autoindent
 " Fix Backspace
 set backspace=indent,eol,start
 
+" Mouse Scroll
+set mouse=a
+
 " Color Scheme
 syntax enable
+colorscheme snazzy
 highlight NonText ctermfg=LightGray
 highlight Normal ctermfg=LightGray ctermbg=235
 highlight TabLineFill ctermfg=255 ctermbg=61
