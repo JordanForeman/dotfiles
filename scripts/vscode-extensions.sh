@@ -14,6 +14,7 @@ extensions=(
   sorbet.sorbet-vscode-extension
   yoavbls.pretty-ts-errors
   ms-vscode.vscode-speech
+  github.vscode-pull-request-github
 )
 
 for extension in "${extensions[@]}"; do
