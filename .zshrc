@@ -15,9 +15,7 @@ if [[ "$(uname)" == "Linux" ]]; then
     test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
-# 🚀 Spaceship Setup
-SPACESHIP_PROMPT_ASYNC=false
-source $(brew --prefix)/opt/spaceship/spaceship.zsh
+PS1=" "
 
 # ASDF
 . $(brew --prefix asdf)/libexec/asdf.sh
@@ -34,3 +32,10 @@ fi
 
 # Local settings
 source ~/.profile
+
+# bun completions
+[ -s "/Users/jordan/.bun/_bun" ] && source "/Users/jordan/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"

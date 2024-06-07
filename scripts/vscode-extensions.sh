@@ -4,7 +4,6 @@ extensions=(
   aaronthomas.vscode-snazzy-operator
   github.copilot
   github.copilot-chat
-  github.heygithub
   johnpapa.vscode-peacock
   kaiwood.endwise
   koichisasada.vscode-rdbg

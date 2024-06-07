@@ -1,3 +1,2 @@
 alias ls="eza -la"
 alias cat=bat
-alias code="code --user-data-dir ~/.vscode"

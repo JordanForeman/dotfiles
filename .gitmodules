@@ -10,13 +10,17 @@
     path = .vim/pack/vendor/start/vim-snazzy
     url = git@github.com:connorholyday/vim-snazzy.git
 
-[submodule "zsh-autocomplete"]
+[submodule "vim-devicons"]
+    path = .vim/pack/vendor/start/vim-devicons
+    url = git@github.com:ryanoasis/vim-devicons.git
+
+[submodule "ext/zsh-autocomplete"]
     path = ext/zsh-autocomplete
     url = git@github.com:marlonrichert/zsh-autocomplete.git
 
-[submodule "zsh-autosuggestions"]
-    path = ext/zsh-autosuggestions
-    url = git@github.com:zsh-users/zsh-autosuggestions.git
+[submodule "ext/zsh-autosuggestions"]
+	path = ext/zsh-autosuggestions
+	url = git@github.com:zsh-users/zsh-autosuggestions.git
 
 [submodule "tmux-plugin-manager"]
     path = .tmux/plugins/tpm
@@ -25,3 +29,4 @@
 [submodule ".vim/pack/vendor/start/vim-devicons"]
     path = .vim/pack/vendor/start/vim-devicons
     url = git@github.com:ryanoasis/vim-devicons.git
+

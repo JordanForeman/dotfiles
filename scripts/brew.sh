@@ -25,7 +25,6 @@ brew install \
     eza \
     tor \
     colima \
-    spaceship \
     gh \
     git-delta \
     ripgrep \

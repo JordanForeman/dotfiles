@@ -7,6 +7,7 @@ if ! command -v bun &> /dev/null; then
 
     # Install Bun
     curl -fsSL https://bun.sh/install | bash
+    exec /bin/zsh
 
     # Check if Bun was installed successfully
     if command -v bun &> /dev/null; then

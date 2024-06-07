@@ -2,7 +2,6 @@
 
 # List of dotfiles to symlink
 dotfiles=(
-    ".vscode/User/settings.json"
     ".zshrc"
     ".aliases"
     ".vimrc"
