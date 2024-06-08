@@ -16,7 +16,7 @@ if [[ "$(uname)" == "Linux" ]]; then
 fi
 
 
-PS1="%F{123} %f"
+PS1="%F{184} %f"
 
 # Zellij
 export ZELLIJ_CONFIG_FILE="$HOME/.config/zellij/config.kdl"
