@@ -15,7 +15,16 @@ if [[ "$(uname)" == "Linux" ]]; then
     test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
-PS1=" "
+
+PS1="%F{123} %f"
+
+# Zellij
+export ZELLIJ_CONFIG_FILE="$HOME/.config/zellij/config.kdl"
+export DISABLE_AUTO_TITLE="true"
+precmd() {
+    echo -n -e "\033]0;$(pwd)\007"
+}
+eval "$(zellij setup --generate-auto-start zsh)"
 
 # ASDF
 . $(brew --prefix asdf)/libexec/asdf.sh

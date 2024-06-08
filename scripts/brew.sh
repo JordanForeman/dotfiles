@@ -29,4 +29,5 @@ brew install \
     git-delta \
     ripgrep \
     asdf \
-    pandoc
+    pandoc \
+    zellij
