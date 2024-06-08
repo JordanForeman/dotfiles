@@ -10,6 +10,7 @@ dotfiles=(
     ".vim"
     ".gitconfig"
     ".asdfrc"
+    ".config/zellij"
 )
 
 # Loop through each file

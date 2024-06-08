@@ -15,6 +15,7 @@ extensions=(
   ms-vscode.vscode-speech
   github.vscode-pull-request-github
   adpyke.codesnap
+  kdl-org.kdl
 )
 
 for extension in "${extensions[@]}"; do
