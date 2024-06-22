@@ -15,8 +15,7 @@ if [[ "$(uname)" == "Linux" ]]; then
     test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
-
-PS1="%F{184} %f"
+PS1="%F{184}%B-> %b%f"
 
 # Zellij
 export ZELLIJ_CONFIG_FILE="$HOME/.config/zellij/config.kdl"
@@ -48,3 +47,4 @@ source ~/.profile
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+export PATH="/usr/local/sbin:$PATH"
