@@ -15,9 +15,16 @@ if [[ "$(uname)" == "Linux" ]]; then
     test -d /home/linuxbrew/.linuxbrew && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
 
-# 🚀 Spaceship Setup
-SPACESHIP_PROMPT_ASYNC=false
-source $(brew --prefix)/opt/spaceship/spaceship.zsh
+# Function to get the current git branch
+git_branch() {
+    git symbolic-ref --short HEAD 2>/dev/null | sed 's/^/ %F{13}(/' | sed 's/$/)%f/'
+}
+
+# Set the prompt
+setopt PROMPT_SUBST
+PS1='
+%F{14}%n%f 🧑‍💻 %F{11}[%m]%f %1~$(git_branch)
+%F{10}󰄾%f '
 
 # ASDF
 . $(brew --prefix asdf)/libexec/asdf.sh
