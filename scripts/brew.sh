@@ -30,4 +30,7 @@ brew install \
     ripgrep \
     asdf \
     pandoc \
-    zellij
+    zellij \
+    neovim \
+    fd \
+    tmuxinator

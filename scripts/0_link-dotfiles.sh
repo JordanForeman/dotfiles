@@ -11,6 +11,7 @@ dotfiles=(
     ".gitconfig"
     ".asdfrc"
     ".config/zellij"
+    ".config/tmuxinator"
 )
 
 # Loop through each file
