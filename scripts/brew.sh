@@ -33,4 +33,5 @@ brew install \
     zellij \
     neovim \
     fd \
-    tmuxinator
+    tmuxinator \
+    bottom
