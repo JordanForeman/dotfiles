@@ -1,0 +1,6 @@
+[window]
+startup_mode = "Maximized"
+
+[font]
+size = 18
+normal = { family = "CaskaydiaCove Nerd Font Mono" }

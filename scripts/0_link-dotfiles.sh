@@ -12,6 +12,7 @@ dotfiles=(
     ".asdfrc"
     ".config/zellij"
     ".config/tmuxinator"
+    ".alacritty.toml"
 )
 
 # Loop through each file
