@@ -26,8 +26,12 @@ PS1='
 %F{14}%n%f %F{11}[%m]%f %1~$(git_branch)
 %F{10}󰄾%f '
 
-# ASDF
-. $(brew --prefix asdf)/libexec/asdf.sh
+# Shadowenv
+eval "$(shadowenv init zsh)"
+
+# chruby
+source $HOMEBREW_PREFIX/opt/chruby/share/chruby/chruby.sh
+source $HOMEBREW_PREFIX/opt/chruby/share/chruby/auto.sh
 
 # 🧑‍💻 NVM Configuration
 export NVM_DIR="/Users/jordan/.nvm"
@@ -50,12 +54,16 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 export PATH="/usr/local/sbin:$PATH"
 
-# bun
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
-
 [[ -x /opt/homebrew/bin/brew ]] && eval $(/opt/homebrew/bin/brew shellenv)
 
 [[ -f /opt/dev/sh/chruby/chruby.sh ]] && { type chruby >/dev/null 2>&1 || chruby () { source /opt/dev/sh/chruby/chruby.sh; chruby "$@"; } }
 
 [ -f /opt/dev/dev.sh ] && source /opt/dev/dev.sh
+
+# Added by Windsurf
+export PATH="/Users/jordan/.codeium/windsurf/bin:$PATH"
+alias claude="/Users/jordan/.claude/local/claude"
+
+# Make Go binaries available
+export GOPATH=$HOME/go
+export PATH=$PATH:$GOPATH/bin

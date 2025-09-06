@@ -1,8 +1,11 @@
 [window]
 startup_mode = "Maximized"
 
+[general]
+working_directory = "./Developer"
+
 [font]
-size = 12
+size = 14
 normal = { family = "CaskaydiaCove Nerd Font Mono" }
 
 [keyboard]

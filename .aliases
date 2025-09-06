@@ -1,2 +1,3 @@
 alias ls="eza -la"
 alias cat=bat
+alias codi=code-insiders
