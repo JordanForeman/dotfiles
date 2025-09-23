@@ -1,99 +1,133 @@
 {
-  description = "Example nix-darwin system flake";
+  description = "Jordan's multi-platform development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    
+    # macOS support
     nix-darwin.url = "github:nix-darwin/nix-darwin";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
+    
+    # User environment management (works on both macOS and Linux)
+    home-manager.url = "github:nix-community/home-manager";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs@{ self, nix-darwin, nixpkgs }:
+  outputs = inputs@{ self, nixpkgs, nix-darwin, home-manager }:
   let
-    configuration = { pkgs, ... }: {
-      imports = [
-        ./nix/modules/dotfiles.nix
-        ./nix/modules/languages.nix
-        ./nix/modules/shell.nix
-      ];
-      # List packages installed in system profile. To search by name, run:
-      # $ nix-env -qaP | grep wget
-      environment.systemPackages = with pkgs; [
-        # Core CLI tools (migrated from brew.sh)
-        bat
-        eza
-        ripgrep
-        fd
-        delta
-        gh
-        neovim
-        bottom
-        pandoc
-        zellij
-        lazygit
+    # Supported systems
+    supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+    
+    # Helper function to generate configs for each system
+    forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+    
+    # Common package names (system-agnostic)
+    commonPackageNames = [
+      "bat" "eza" "ripgrep" "fd" "delta" "gh" "neovim" 
+      "bottom" "pandoc" "zellij" "lazygit" "gnupg" "openssl" "tor" "vim"
+    ];
+    
+    # Common configuration shared across all machines
+    commonModules = [
+      ./nix/modules/dotfiles.nix
+      ./nix/modules/languages.nix  
+      ./nix/modules/shell.nix
+    ];
+    
+    # macOS-specific configuration
+    darwinConfig = { pkgs, ... }: {
+      imports = commonModules;
+      
+      # macOS packages  
+      environment.systemPackages = (map (name: pkgs.${name}) commonPackageNames) ++ (with pkgs; [
+        colima  # macOS-specific container runtime
+      ]);
 
-        # Development tools
-        gnupg
-        openssl
-        # Note: node, nvm, asdf will be handled separately with language management
-
-        # Network/security tools
-        tor
-        colima
-
-        # Keep vim for now (was in original flake)
-        vim
-      ];
-
-      # Homebrew configuration for GUI applications
+      # Homebrew for GUI applications (macOS only)
       homebrew = {
         enable = true;
-
-        # GUI Applications (migrated from mac-defaults.sh)
         casks = [
-          "visual-studio-code"
-          "ghostty"
-          "dbeaver-community" 
-          "obsidian"
-          "1password"
-          "discord"
-          "brave-browser"
-          "protonvpn"
-          "vlc"
-          "zoom"
+          "visual-studio-code" "ghostty" "dbeaver-community" 
+          "obsidian" "1password" "discord" "brave-browser"
+          "protonvpn" "vlc" "zoom"
         ];
-
-        # Clean up orphaned casks
         onActivation.cleanup = "zap";
       };
 
-      # Set primary user for homebrew and other user-specific features
       system.primaryUser = "jordan";
-
-      # Necessary for using flakes on this system.
       nix.settings.experimental-features = "nix-command flakes";
-
-      # Enable zsh with basic settings only
-      programs.zsh = {
-        enable = true;
-        enableCompletion = true;
-      };
-
-      # Set Git commit hash for darwin-version.
+      programs.zsh = { enable = true; enableCompletion = true; };
       system.configurationRevision = self.rev or self.dirtyRev or null;
-
-      # Used for backwards compatibility, please read the changelog before changing.
-      # $ darwin-rebuild changelog
       system.stateVersion = 6;
-
-      # The platform the configuration will be used on.
-      nixpkgs.hostPlatform = "aarch64-darwin";
     };
+    
+    # Linux-specific configuration  
+    linuxConfig = { pkgs, ... }: {
+      imports = commonModules;
+      
+      # Linux packages
+      home.packages = (map (name: pkgs.${name}) commonPackageNames) ++ (with pkgs; [
+        # Linux-specific tools
+        hyprland  # Your window manager
+        # Add other Linux-specific packages
+      ]);
+      
+      home.stateVersion = "25.05";
+    };
+    
   in
   {
-    # Build darwin flake using:
-    # $ darwin-rebuild build --flake .#Jordans-MacBook-Pro
-    darwinConfigurations."Jordans-MacBook-Pro" = nix-darwin.lib.darwinSystem {
-      modules = [ configuration ];
+    # macOS configurations
+    darwinConfigurations = {
+      # Personal MacBook
+      "personal-macbook" = nix-darwin.lib.darwinSystem {
+        system = "aarch64-darwin";
+        modules = [ 
+          darwinConfig
+          # Personal-specific overrides can go here
+        ];
+      };
+      
+      # Work MacBook (for external config merging)
+      "work-macbook" = nix-darwin.lib.darwinSystem {
+        system = "aarch64-darwin"; 
+        modules = [ 
+          darwinConfig
+          # Work-specific config would be imported here
+          # ./work/work-config.nix  # From separate repo
+        ];
+      };
+      
+      # Legacy name for backward compatibility
+      "Jordans-MacBook-Pro" = nix-darwin.lib.darwinSystem {
+        system = "aarch64-darwin";
+        modules = [ darwinConfig ];
+      };
     };
+    
+    # Linux configurations (using home-manager)
+    homeConfigurations = {
+      # Arch Linux + Hyprland
+      "jordan@arch-pc" = home-manager.lib.homeManagerConfiguration {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        modules = [
+          linuxConfig
+          # Linux-specific dotfiles and configs
+        ];
+      };
+    };
+    
+    # Development shells for any system
+    devShells = forAllSystems (system: 
+      let pkgs = nixpkgs.legacyPackages.${system};
+      in {
+        default = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            bat eza ripgrep fd delta gh neovim bottom 
+            pandoc zellij lazygit gnupg openssl tor vim
+          ];
+        };
+      }
+    );
   };
 }
