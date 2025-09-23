@@ -1,3 +1,8 @@
 .tmux/
 .vim/colors
 .vim/.vim
+
+# Nix build artifacts
+result
+result-*
+.direnv/
