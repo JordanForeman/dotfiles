@@ -1,6 +1,16 @@
 {
   description = "Jordan's multi-platform development environment";
 
+  # Configure binary caches to avoid building from source
+  nixConfig = {
+    extra-substituters = [
+      "https://cache.nixos.org"
+    ];
+    extra-trusted-public-keys = [
+      "cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     
@@ -46,10 +56,19 @@
       # Homebrew for GUI applications (macOS only)
       homebrew = {
         enable = true;
+        taps = [
+          "FelixKratz/formulae"
+        ];
+        brews = [
+          {
+            name = "sketchybar";
+            start_service = true;
+          }
+        ];
         casks = [
           "visual-studio-code" "ghostty" "dbeaver-community" 
           "obsidian" "1password" "discord" "brave-browser"
-          "protonvpn" "vlc" "zoom"
+          "protonvpn" "vlc" "zoom" "nikitabobko/tap/aerospace"
         ];
         onActivation.cleanup = "zap";
       };

@@ -11,6 +11,8 @@ let
     ".config/nvim" = ../../.config/nvim;
     ".config/zellij" = ../../.config/zellij;
     ".config/ghostty" = ../../.config/ghostty;
+    ".config/aerospace" = ../../.config/aerospace;
+    ".config/sketchybar" = ../../.config/sketchybar;
   };
   
   # Generate symlink commands for all dotfiles

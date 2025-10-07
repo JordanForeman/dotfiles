@@ -48,4 +48,13 @@ in
     # Keep .aliases as a separate file for reference (optional)
     ln -sf "${builtins.toString ../../.aliases}" ~/.aliases
   '';
+
+  # Dedicated activation script for Node.js package managers
+  system.activationScripts.nodejs.text = ''
+    # Enable npm via corepack (Nix-native approach)
+    if command -v corepack &> /dev/null; then
+      echo "Enabling npm via corepack..."
+      corepack enable npm 2>/dev/null || true
+    fi
+  '';
 }

@@ -54,16 +54,6 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 export PATH="/usr/local/sbin:$PATH"
 
-# [[ -x /opt/homebrew/bin/brew ]] && eval $(/opt/homebrew/bin/brew shellenv)
-
-[[ -f /opt/dev/sh/chruby/chruby.sh ]] && { type chruby >/dev/null 2>&1 || chruby () { source /opt/dev/sh/chruby/chruby.sh; chruby "$@"; } }
-
-[ -f /opt/dev/dev.sh ] && source /opt/dev/dev.sh
-
-# Added by Windsurf
-export PATH="/Users/jordan/.codeium/windsurf/bin:$PATH"
-alias claude="/Users/jordan/.claude/local/claude"
-
 # Make Go binaries available
 export GOPATH=$HOME/go
 export PATH=$PATH:$GOPATH/bin
