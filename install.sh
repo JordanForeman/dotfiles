@@ -72,6 +72,15 @@ if [[ "$PLATFORM" == "darwin" ]]; then
     echo "📱 Using configuration: $CONFIG"
     echo ""
 
+    # Check sudo privileges
+    echo "🔐 Checking sudo privileges..."
+    if ! sudo -n true 2>/dev/null; then
+        echo "   You'll be prompted for your password to run system activation scripts."
+    else
+        echo "✅ Sudo privileges confirmed"
+    fi
+    echo ""
+
     echo "🔧 Building nix-darwin configuration..."
     if darwin-rebuild build --flake .#$CONFIG; then
         echo "✅ Build successful!"
@@ -82,20 +91,27 @@ if [[ "$PLATFORM" == "darwin" ]]; then
 
     echo ""
     echo "🔄 Switching to new configuration..."
+    echo "   Note: This requires sudo privileges to run system activation scripts."
     if sudo -E darwin-rebuild switch --flake .#$CONFIG; then
         echo "✅ Configuration activated!"
+        echo "   All dotfile symlinks and system configurations have been applied."
     else
         echo "❌ Switch failed. Please check the error messages above."
+        echo "   Make sure you have sudo privileges and that all dependencies are installed."
         exit 1
     fi
 
     echo ""
     echo "🎉 macOS setup complete! Your development environment is now managed by nix-darwin."
+    echo "   ✅ All dotfile symlinks have been created"
+    echo "   ✅ System packages and applications have been installed"
+    echo "   ✅ Configuration files are now managed by nix-darwin"
     echo ""
     echo "To make changes:"
     echo "  1. Edit configuration files in their original locations (.vimrc, .gitconfig, etc.)"
     echo "  2. Edit packages/apps in flake.nix"
-    echo "  3. Run: darwin-rebuild switch --flake .#$CONFIG"
+    echo "  3. Run: sudo darwin-rebuild switch --flake .#$CONFIG"
+    echo "     (sudo is required for system activation scripts and dotfile symlinks)"
     
 elif [[ "$PLATFORM" == "linux" ]]; then
     # Linux setup with home-manager

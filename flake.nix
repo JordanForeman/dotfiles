@@ -58,6 +58,7 @@
         enable = true;
         taps = [
           "FelixKratz/formulae"
+          "nikitabobko/tap"
         ];
         brews = [
           {

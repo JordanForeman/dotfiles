@@ -30,7 +30,10 @@ let
     # Bun environment
     export BUN_INSTALL="$HOME/.bun"
     export PATH="$BUN_INSTALL/bin:$PATH"
-    
+
+    # Nvim as $EDITOR
+    export EDITOR=nvim
+
     # Shadowenv (project environment management)
     if command -v shadowenv &> /dev/null; then
       eval "$(shadowenv init zsh)"
