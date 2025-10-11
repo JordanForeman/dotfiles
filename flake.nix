@@ -67,6 +67,7 @@
           "nikitabobko/tap"
         ];
         brews = [
+          "starship"
           {
             name = "sketchybar";
             start_service = true;

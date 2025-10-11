@@ -69,6 +69,9 @@
       export BUN_INSTALL="$HOME/.bun"
       export PATH="$BUN_INSTALL/bin:$PATH"
 
+      # Starship.rs
+      eval "$(starship init zsh)"
+
       # Shadowenv (project environment management)
       if command -v shadowenv &> /dev/null; then
         eval "$(shadowenv init zsh)"
