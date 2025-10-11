@@ -5,11 +5,11 @@ font-family = "SF Mono"
 font-size = 14
 
 # Theme and appearance
-theme = "dark"
+theme = "Bluloco Dark"
 background-opacity = 1.0
 window-decoration = true
-window-padding-x = 8
-window-padding-y = 8
+window-padding-x = 0
+window-padding-y = 0
 
 # Cursor
 cursor-style = "block"
@@ -26,3 +26,6 @@ keybind = "cmd+shift+right=next_tab"
 keybind = "cmd+plus=increase_font_size"
 keybind = "cmd+minus=decrease_font_size"
 keybind = "cmd+zero=reset_font_size"
+
+# OS X Specific
+macos-titlebar-style = "hidden"
