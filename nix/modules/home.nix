@@ -46,6 +46,16 @@
       source = ../../.config/sketchybar/plugins/aerospace.sh;
       executable = true;
     };
+    
+    ".config/sketchybar/plugins/clock.sh" = {
+      source = ../../.config/sketchybar/plugins/clock.sh;
+      executable = true;
+    };
+    
+    ".config/sketchybar/plugins/battery.sh" = {
+      source = ../../.config/sketchybar/plugins/battery.sh;
+      executable = true;
+    };
 
     ".aliases".source = ../../.aliases;
     ".gitconfig".source = ../../.gitconfig;
