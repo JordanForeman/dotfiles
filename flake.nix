@@ -37,16 +37,22 @@
       "bottom" "pandoc" "zellij" "lazygit" "gnupg" "openssl" "tor" "vim"
     ];
     
-    # Common configuration shared across all machines
-    commonModules = [
-      ./nix/modules/dotfiles.nix
-      ./nix/modules/languages.nix  
-      ./nix/modules/shell.nix
-    ];
-    
     # macOS-specific configuration
     darwinConfig = { pkgs, ... }: {
-      imports = commonModules;
+      imports = [
+        home-manager.darwinModules.home-manager
+        {
+          home-manager.useGlobalPkgs = true;
+          home-manager.useUserPackages = true;
+          home-manager.backupFileExtension = "backup";
+          home-manager.users.jordan = import ./nix/modules/home.nix;
+          
+          users.users.jordan = {
+            name = "jordan";
+            home = "/Users/jordan";
+          };
+        }
+      ];
       
       # macOS packages  
       environment.systemPackages = (map (name: pkgs.${name}) commonPackageNames) ++ (with pkgs; [
@@ -83,8 +89,6 @@
     
     # Linux-specific configuration  
     linuxConfig = { pkgs, ... }: {
-      imports = commonModules;
-      
       # Linux packages
       home.packages = (map (name: pkgs.${name}) commonPackageNames) ++ (with pkgs; [
         # Linux-specific tools
