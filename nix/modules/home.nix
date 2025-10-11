@@ -17,49 +17,19 @@
   ];
 
   home.file = {
-    ".config/nvim" = {
-      source = ../../.config/nvim;
-      recursive = true;
-    };
+    ".config/nvim".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/nvim";
     
-    ".config/aerospace" = {
-      source = ../../.config/aerospace;
-      recursive = true;
-    };
+    ".config/aerospace".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/aerospace";
     
-    ".config/ghostty" = {
-      source = ../../.config/ghostty;
-      recursive = true;
-    };
+    ".config/ghostty".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/ghostty";
     
-    ".config/zellij" = {
-      source = ../../.config/zellij;
-      recursive = true;
-    };
+    ".config/zellij".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/zellij";
     
-    ".config/sketchybar/sketchybarrc" = {
-      source = ../../.config/sketchybar/sketchybarrc;
-      executable = true;
-    };
-    
-    ".config/sketchybar/plugins/aerospace.sh" = {
-      source = ../../.config/sketchybar/plugins/aerospace.sh;
-      executable = true;
-    };
-    
-    ".config/sketchybar/plugins/clock.sh" = {
-      source = ../../.config/sketchybar/plugins/clock.sh;
-      executable = true;
-    };
-    
-    ".config/sketchybar/plugins/battery.sh" = {
-      source = ../../.config/sketchybar/plugins/battery.sh;
-      executable = true;
-    };
+    ".config/sketchybar".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/sketchybar";
 
-    ".aliases".source = ../../.aliases;
-    ".gitconfig".source = ../../.gitconfig;
-    ".vimrc".source = ../../.vimrc;
+    ".aliases".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.aliases";
+    ".gitconfig".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.gitconfig";
+    ".vimrc".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.vimrc";
   };
 
   programs.zsh = {
