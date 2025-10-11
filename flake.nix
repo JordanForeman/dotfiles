@@ -77,6 +77,7 @@
           "visual-studio-code" "ghostty" "dbeaver-community" 
           "obsidian" "1password" "discord" "brave-browser"
           "protonvpn" "vlc" "zoom" "nikitabobko/tap/aerospace"
+          "macwhisper"
         ];
         onActivation.cleanup = "zap";
       };
