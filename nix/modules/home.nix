@@ -37,7 +37,10 @@
       recursive = true;
     };
     
-    ".config/sketchybar/sketchybarrc".source = ../../.config/sketchybar/sketchybarrc;
+    ".config/sketchybar/sketchybarrc" = {
+      source = ../../.config/sketchybar/sketchybarrc;
+      executable = true;
+    };
     
     ".config/sketchybar/plugins/aerospace.sh" = {
       source = ../../.config/sketchybar/plugins/aerospace.sh;
