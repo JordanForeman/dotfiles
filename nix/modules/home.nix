@@ -21,26 +21,29 @@
       source = ../../.config/nvim;
       recursive = true;
     };
-
-    ".config/sketchybar/sketchybarrc" = {
-      source = ../../.config/sketchybar/sketchybarrc;
-      executable = false;
+    
+    ".config/aerospace" = {
+      source = ../../.config/aerospace;
+      recursive = true;
     };
-
+    
+    ".config/ghostty" = {
+      source = ../../.config/ghostty;
+      recursive = true;
+    };
+    
+    ".config/zellij" = {
+      source = ../../.config/zellij;
+      recursive = true;
+    };
+    
+    ".config/sketchybar/sketchybarrc".source = ../../.config/sketchybar/sketchybarrc;
+    
     ".config/sketchybar/plugins/aerospace.sh" = {
       source = ../../.config/sketchybar/plugins/aerospace.sh;
       executable = true;
     };
 
-    ".config/aerospace/aerospace.toml".source = ../../.config/aerospace/aerospace.toml;
-    
-    ".config/ghostty/config".source = ../../.config/ghostty/config;
-    
-    ".config/zellij/config.kdl".source = ../../.config/zellij/config.kdl;
-    ".config/zellij/layouts/foreman.kdl".source = ../../.config/zellij/layouts/foreman.kdl;
-    ".config/zellij/themes/catppuccin.kdl".source = ../../.config/zellij/themes/catppuccin.kdl;
-    ".config/zellij/themes/tokyo-night.kdl".source = ../../.config/zellij/themes/tokyo-night.kdl;
-    
     ".aliases".source = ../../.aliases;
     ".gitconfig".source = ../../.gitconfig;
     ".vimrc".source = ../../.vimrc;
