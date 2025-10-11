@@ -1,7 +1,0 @@
-[submodule "ext/zsh-autocomplete"]
-    path = ext/zsh-autocomplete
-    url = git@github.com:marlonrichert/zsh-autocomplete.git
-
-[submodule "ext/zsh-autosuggestions"]
-	path = ext/zsh-autosuggestions
-	url = git@github.com:zsh-users/zsh-autosuggestions.git
