@@ -18,14 +18,13 @@
 
   home.file = {
     ".config/nvim".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/nvim";
-    
     ".config/aerospace".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/aerospace";
-    
+    ".config/lazygit".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/lazygit";
     ".config/ghostty".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/ghostty";
-    
     ".config/zellij".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/zellij";
-    
     ".config/sketchybar".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/sketchybar";
+
+    ".config/starship.toml".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/starship.toml";
 
     ".aliases".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.aliases";
     ".gitconfig".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.gitconfig";
