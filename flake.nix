@@ -68,6 +68,7 @@
         ];
         brews = [
           "starship"
+          "borders"
           {
             name = "sketchybar";
             start_service = true;
