@@ -16,6 +16,7 @@
     cargo
     docker
     colima
+    shadowenv
   ];
 
   home.file = {
