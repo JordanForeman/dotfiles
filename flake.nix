@@ -35,6 +35,7 @@
     commonPackageNames = [
       "bat" "eza" "ripgrep" "fd" "delta" "gh" "neovim" 
       "bottom" "pandoc" "zellij" "lazygit" "gnupg" "openssl" "tor" "vim"
+      "lazydocker"
     ];
     
     # macOS-specific configuration
