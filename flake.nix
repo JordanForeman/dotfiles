@@ -57,6 +57,8 @@
       # macOS packages  
       environment.systemPackages = (map (name: pkgs.${name}) commonPackageNames) ++ (with pkgs; [
         colima  # macOS-specific container runtime
+        mariadb
+        libmysqlclient
       ]);
 
       # Homebrew for GUI applications (macOS only)
