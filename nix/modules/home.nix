@@ -26,6 +26,7 @@
     ".config/ghostty".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/ghostty";
     ".config/zellij".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/zellij";
     ".config/sketchybar".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/sketchybar";
+    ".config/lazydocker".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/lazydocker";
 
     ".config/starship.toml".source = config.lib.file.mkOutOfStoreSymlink "/Users/jordan/Developer/dotfiles/.config/starship.toml";
 
@@ -95,6 +96,7 @@
   home.sessionVariables = {
     EDITOR = "nvim";
     DOCKER_HOST = "unix://${config.home.homeDirectory}/.colima/default/docker.sock";
+    XDG_CONFIG_HOME = "$HOME/.config";
   };
 
   launchd.agents.colima = {
