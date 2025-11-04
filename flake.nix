@@ -60,6 +60,8 @@
         colima  # macOS-specific container runtime
         mariadb
         libmysqlclient
+        openssl_3
+        claude-code
       ]);
 
       # Homebrew for GUI applications (macOS only)

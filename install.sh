@@ -81,8 +81,11 @@ if [[ "$PLATFORM" == "darwin" ]]; then
     fi
     echo ""
 
+    # Needed to install "unfree" pacakages (whatever the heck that means)
+    export NIXPKGS_ALLOW_UNFREE=1 
+
     echo "🔧 Building nix-darwin configuration..."
-    if darwin-rebuild build --flake .#$CONFIG; then
+    if darwin-rebuild build --flake .#$CONFIG --impure; then
         echo "✅ Build successful!"
     else
         echo "❌ Build failed. Please check the error messages above."
@@ -92,7 +95,7 @@ if [[ "$PLATFORM" == "darwin" ]]; then
     echo ""
     echo "🔄 Switching to new configuration..."
     echo "   Note: This requires sudo privileges to run system activation scripts."
-    if sudo -E darwin-rebuild switch --flake .#$CONFIG; then
+    if sudo -E darwin-rebuild switch --flake .#$CONFIG --impure; then
         echo "✅ Configuration activated!"
         echo "   All dotfile symlinks and system configurations have been applied."
     else
