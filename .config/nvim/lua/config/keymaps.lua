@@ -8,3 +8,5 @@ end)
 vim.keymap.set("n", "<C-u>", function()
   vim.cmd([[normal! <C-u>zzz.]])
 end)
+
+vim.keymap.set("n", "<leader>gO", ":!gh browse %:.<CR>", { desc = "Open Current File in GitHub" })
