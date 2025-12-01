@@ -7,11 +7,11 @@ sketchybar --bar \
   position=top \
   height=32 \
   blur_radius=30 \
-  color=0x00ffffff \
-  shadow=off \
+  color=0xff1e1e2e \
+  shadow=on \
   sticky=on \
-  padding_left=10 \
-  padding_right=10 \
+  padding_left=8 \
+  padding_right=16 \
   notch_width=200 \
   display=main
 
@@ -19,18 +19,15 @@ sketchybar --bar \
 sketchybar --default \
   icon.font="CaskaydiaCove NF:Bold:14.0" \
   icon.color=0xffcdd6f4 \
-  icon.padding_left=4 \
-  icon.padding_right=4 \
+  icon.padding_left=8 \
+  icon.padding_right=8 \
   label.font="CaskaydiaCove NF:Semibold:13.0" \
   label.color=0xffcdd6f4 \
-  label.padding_left=4 \
-  label.padding_right=4 \
-  padding_left=4 \
-  padding_right=4 \
-  background.height=24 \
-  background.corner_radius=8 \
-  background.padding_left=2 \
-  background.padding_right=2
+  label.padding_left=0 \
+  label.padding_right=0 \
+  padding_left=8 \
+  padding_right=0 \
+  background.drawing=off
 
 ##### Aerospace Workspaces #####
 sketchybar --add event aerospace_workspace_change
@@ -40,14 +37,8 @@ for sid in 1 2 3 4 5; do
     --subscribe space.$sid aerospace_workspace_change \
     --set space.$sid \
     icon="$sid" \
-    icon.padding_left=8 \
-    icon.padding_right=8 \
     icon.highlight_color=0xff89b4fa \
     label.drawing=off \
-    background.color=0xff313244 \
-    background.border_color=0xff45475a \
-    background.border_width=1 \
-    background.drawing=on \
     click_script="aerospace workspace $sid" \
     script="$PLUGIN_DIR/aerospace.sh $sid"
 done
@@ -57,17 +48,11 @@ sketchybar --add item clock right \
   --set clock \
   update_freq=30 \
   icon= \
-  background.color=0xff313244 \
-  background.border_color=0xff45475a \
-  background.border_width=1 \
   script="$PLUGIN_DIR/clock.sh"
 
 sketchybar --add item battery right \
   --set battery \
   update_freq=120 \
-  background.color=0xff313244 \
-  background.border_color=0xff45475a \
-  background.border_width=1 \
   script="$PLUGIN_DIR/battery.sh" \
   --subscribe battery system_woke power_source_change
 
