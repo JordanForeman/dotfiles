@@ -4,7 +4,11 @@
   home.stateVersion = "24.11";
 
   home.packages = with pkgs; [
-    chruby
+    ruby_3_4
+    postgresql
+    libpq
+    libyaml.dev
+    pkg-config
     nodejs-slim
     corepack
     python3
@@ -63,22 +67,27 @@
     ];
     
     initContent = ''
+      # Nix profile paths for C/C++ compilation
+      export CPATH="$HOME/.nix-profile/include"
+      export LIBRARY_PATH="$HOME/.nix-profile/lib"
+
       # Source aliases
       source ~/.aliases
-      
-      # chruby setup (supports .ruby-version files automatically)
-      source ${pkgs.chruby}/share/chruby/chruby.sh
-      source ${pkgs.chruby}/share/chruby/auto.sh
-      
+
+      # Load local settings
+      if [ -f ~/.profile ]; then
+        source ~/.profile
+      fi
+
       # NVM setup (supports .nvmrc files automatically)
       export NVM_DIR="$HOME/.nvm"
       [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
       [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/bash_completion"
-      
+
       # Go environment
       export GOPATH="$HOME/go"
       export PATH="$PATH:$GOPATH/bin"
-      
+
       # Bun environment
       export BUN_INSTALL="$HOME/.bun"
       export PATH="$BUN_INSTALL/bin:$PATH"
