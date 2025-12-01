@@ -29,3 +29,4 @@ keybind = "cmd+zero=reset_font_size"
 
 # OS X Specific
 macos-titlebar-style = "hidden"
+keybind = shift+enter=text:\x1b\r
