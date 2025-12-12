@@ -9,7 +9,8 @@ theme = "Bluloco Dark"
 background-opacity = 1.0
 window-decoration = true
 window-padding-x = 0
-window-padding-y = 0
+window-padding-y = 2,0 
+window-padding-balance = false
 
 # Cursor
 cursor-style = "block"
@@ -23,10 +24,10 @@ keybind = "cmd+t=new_tab"
 keybind = "cmd+w=close_surface"
 keybind = "cmd+shift+left=previous_tab"
 keybind = "cmd+shift+right=next_tab"
-keybind = "cmd+plus=increase_font_size"
-keybind = "cmd+minus=decrease_font_size"
+# keybind = "cmd+plus=increase_font_size"
+# keybind = "cmd+minus=decrease_font_size"
 keybind = "cmd+zero=reset_font_size"
 
 # OS X Specific
 macos-titlebar-style = "hidden"
-keybind = shift+enter=text:\x1b\r
+# keybind = "shift+enter=text:\x1b\r"
