@@ -7,13 +7,13 @@ sketchybar --bar \
   position=top \
   height=32 \
   blur_radius=30 \
-  color=0xff1e1e2e \
+  color=0xd91e1e2e \
   shadow=on \
   sticky=on \
   padding_left=8 \
   padding_right=16 \
   notch_width=200 \
-  display=main
+  display=all
 
 ##### Default Item Styles #####
 sketchybar --default \

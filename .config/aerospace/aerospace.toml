@@ -4,8 +4,7 @@
 # You can use it to add commands that run after AeroSpace startup.
 # Available commands : https://nikitabobko.github.io/AeroSpace/commands
 after-startup-command = [
-  'exec-and-forget sketchybar',
-  'exec-and-forget borders active_color=0xff33CCFF inactive_color=0xff494d64 width=5.0'
+  'exec-and-forget sketchybar'
 ]
 
 # Start AeroSpace at login
@@ -58,12 +57,19 @@ exec-on-workspace-change = ['/bin/bash', '-c',
 #                 See:
 #                 https://nikitabobko.github.io/AeroSpace/guide#assign-workspaces-to-monitors
 [gaps]
-    inner.horizontal = 8
-    inner.vertical =   8
-    outer.left =       5
-    outer.bottom =     8
-    outer.top =        8
-    outer.right =      5
+    inner.horizontal = 20
+    inner.vertical =   28
+    outer.left =       20
+    outer.bottom =     20
+    outer.top =        [{monitor.'G34WQC' = 52 }, {monitor.'built-in' = 12}, {monitor.'DELL U2723QE' = 52}, 12]
+    outer.right =      20
+
+[workspace-to-monitor-force-assignment]
+    1 = 'secondary'
+    2 = 'main'
+    3 = 'main'
+    4 = 'main'
+    5 = 'secondary'
 
 # 'main' binding mode declaration
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes
