@@ -33,6 +33,9 @@
     tor
     vim
 
+    # Fly.io CLI
+    flyctl
+
     chruby
     nodejs
     python3
