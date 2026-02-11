@@ -9,13 +9,7 @@
   xdg.enable = true;
 
   home.file.".gitconfig".source = ../../.gitconfig;
-  home.file.".vimrc".source = ../../.vimrc;
   home.file.".aliases".source = ../../.aliases;
-
-  xdg.configFile."nvim" = {
-    source = ../../.config/nvim;
-    recursive = true;
-  };
 
   xdg.configFile."zellij" = {
     source = ../../.config/zellij;
