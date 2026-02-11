@@ -1,6 +1,8 @@
 # 😱 OMZ
 export ZSH="$HOME/.oh-my-zsh"
-source $ZSH/oh-my-zsh.sh
+if [[ -f "$ZSH/oh-my-zsh.sh" ]]; then
+    source "$ZSH/oh-my-zsh.sh"
+fi
 
 # Which plugins would you like to load?
 # Standard plugins can be found in $ZSH/plugins/
@@ -27,14 +29,25 @@ PS1='
 %F{10}󰄾%f '
 
 # Shadowenv
-eval "$(shadowenv init zsh)"
+if command -v shadowenv &> /dev/null; then
+    eval "$(shadowenv init zsh)"
+fi
 
 # chruby
-source $HOMEBREW_PREFIX/opt/chruby/share/chruby/chruby.sh
-source $HOMEBREW_PREFIX/opt/chruby/share/chruby/auto.sh
+if [[ -n "${HOMEBREW_PREFIX:-}" ]] && [[ -f "$HOMEBREW_PREFIX/opt/chruby/share/chruby/chruby.sh" ]]; then
+    source "$HOMEBREW_PREFIX/opt/chruby/share/chruby/chruby.sh"
+    source "$HOMEBREW_PREFIX/opt/chruby/share/chruby/auto.sh"
+elif [[ -f "$HOME/.nix-profile/share/chruby/chruby.sh" ]]; then
+    source "$HOME/.nix-profile/share/chruby/chruby.sh"
+    source "$HOME/.nix-profile/share/chruby/auto.sh"
+fi
 
 # 🧑‍💻 NVM Configuration
-export NVM_DIR="/Users/jordan/.nvm"
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# Homebrew-installed NVM (macOS)
 [ -s "/usr/local/opt/nvm/nvm.sh" ] && \. "/usr/local/opt/nvm/nvm.sh"
 [ -s "/usr/local/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/usr/local/opt/nvm/etc/bash_completion.d/nvm"
 
@@ -47,12 +60,22 @@ fi
 source ~/.profile
 
 # bun completions
-[ -s "/Users/jordan/.bun/_bun" ] && source "/Users/jordan/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
-export PATH="/usr/local/sbin:$PATH"
+[[ -d "/usr/local/sbin" ]] && export PATH="/usr/local/sbin:$PATH"
+
+# [[ -x /opt/homebrew/bin/brew ]] && eval $(/opt/homebrew/bin/brew shellenv)
+
+[[ -f /opt/dev/sh/chruby/chruby.sh ]] && { type chruby >/dev/null 2>&1 || chruby () { source /opt/dev/sh/chruby/chruby.sh; chruby "$@"; } }
+
+[ -f /opt/dev/dev.sh ] && source /opt/dev/dev.sh
+
+# Added by Windsurf
+[[ -d "$HOME/.codeium/windsurf/bin" ]] && export PATH="$HOME/.codeium/windsurf/bin:$PATH"
+[[ -x "$HOME/.claude/local/claude" ]] && alias claude="$HOME/.claude/local/claude"
 
 # Make Go binaries available
 export GOPATH=$HOME/go

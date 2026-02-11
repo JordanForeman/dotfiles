@@ -1,19 +1,19 @@
-# Nix-Darwin Usage Guide
+# Usage Guide
 
-Quick reference for managing your nix-darwin development environment.
+Quick reference for managing your macOS (nix-darwin) and Linux (Home Manager) environment.
 
 ## 🏃‍♂️ Common Commands
 
 ### Basic Operations
 ```bash
 # Build configuration (test without applying)
-darwin-rebuild build --flake .#Jordans-MacBook-Pro
+darwin-rebuild build --flake .#personal-macbook
 
-# Build and activate configuration  
-darwin-rebuild switch --flake .#Jordans-MacBook-Pro
+# Build and activate configuration
+darwin-rebuild switch --flake .#personal-macbook
 
 # Show what would change without applying
-darwin-rebuild build --flake .#Jordans-MacBook-Pro --dry-run
+darwin-rebuild build --flake .#personal-macbook --dry-run
 ```
 
 ### Package Management
@@ -49,25 +49,24 @@ sudo launchctl load -w /Library/LaunchDaemons/org.nixos.nix-daemon.plist
 - **Zellij**: `.config/zellij/` directory  
 - **Ghostty**: `.config/ghostty/config`
 
-### System Configuration
+### Configuration
 - **Main config**: `flake.nix`
-- **Modules**: `nix/modules/*.nix`
-- **Packages**: Edit `environment.systemPackages` in `flake.nix`
-- **GUI Apps**: Edit `homebrew.casks` in `flake.nix`
+- **Home Manager modules**: `nix/home/*.nix`
+- **macOS GUI apps**: `homebrew.casks` in `flake.nix`
 
 ## 🔄 Workflow Examples
 
 ### Adding a New CLI Tool
 1. Find the package: `nix search nixpkgs your-tool`
-2. Edit `flake.nix` → add to `environment.systemPackages`
-3. Apply: `darwin-rebuild switch --flake .#Jordans-MacBook-Pro`
+2. Edit `nix/home/common.nix` → add to `home.packages`
+3. Apply using the commands below
 
-### Adding a New GUI Application
+### Adding a New GUI Application (macOS)
 1. Edit `flake.nix` → add to `homebrew.casks`
-2. Apply: `darwin-rebuild switch --flake .#Jordans-MacBook-Pro`
+2. Apply: `darwin-rebuild switch --flake .#personal-macbook`
 
-### Creating a New Configuration Module
-1. Create `nix/modules/your-app.nix`
+### Creating a New Home Manager Module
+1. Create `nix/home/your-module.nix`
 2. Add import to `flake.nix`
 3. Apply changes
 
@@ -77,10 +76,7 @@ Example module:
 
 {
   # Your app configuration
-  system.activationScripts.your-app.text = ''
-    # Symlink config files
-    ln -sf "${builtins.toString ../../.your-app-config}" ~/.your-app-config
-  '';
+  home.file.".your-app-config".source = ../../.your-app-config;
 }
 ```
 
@@ -93,8 +89,7 @@ vim .config/nvim/init.lua  # Neovim settings
 
 # For nix-managed settings, edit flake then rebuild
 vim flake.nix        # System packages/apps
-vim nix/modules/git.nix    # Git module settings
-darwin-rebuild switch --flake .#Jordans-MacBook-Pro
+darwin-rebuild switch --flake .#personal-macbook
 ```
 
 ## 🐛 Debugging
@@ -102,10 +97,10 @@ darwin-rebuild switch --flake .#Jordans-MacBook-Pro
 ### Build Issues
 ```bash
 # Verbose build output
-darwin-rebuild switch --flake .#Jordans-MacBook-Pro --verbose
+darwin-rebuild switch --flake .#personal-macbook --verbose
 
 # Show full stack traces
-darwin-rebuild switch --flake .#Jordans-MacBook-Pro --show-trace
+darwin-rebuild switch --flake .#personal-macbook --show-trace
 
 # Check if files are tracked by git
 git status

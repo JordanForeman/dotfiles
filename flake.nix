@@ -13,11 +13,11 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    
+
     # macOS support
     nix-darwin.url = "github:nix-darwin/nix-darwin";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
-    
+
     # User environment management (works on both macOS and Linux)
     home-manager.url = "github:nix-community/home-manager";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
@@ -27,37 +27,51 @@
   let
     # Supported systems
     supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-    
+
     # Helper function to generate configs for each system
     forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-    
+
     # Common package names (system-agnostic)
     commonPackageNames = [
-      "bat" "eza" "ripgrep" "fd" "delta" "gh" "neovim" 
+      "bat" "eza" "ripgrep" "fd" "delta" "gh" "neovim"
       "bottom" "pandoc" "zellij" "lazygit" "gnupg" "openssl" "tor" "vim"
       "lazydocker"
     ];
-    
-    # macOS-specific configuration
-    darwinConfig = { pkgs, ... }: {
-      imports = [
+
+    # Common Home Manager configuration (macOS + Linux)
+    homeManagerCommonModules = [ ./nix/home/common.nix ];
+
+    mkDarwin = extraHmModules: nix-darwin.lib.darwinSystem {
+      system = "aarch64-darwin";
+      modules = [
+        darwinConfig
         home-manager.darwinModules.home-manager
         {
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
           home-manager.backupFileExtension = "backup";
-          home-manager.users.jordan = import ./nix/modules/home.nix;
-          
+          home-manager.users.jordan = {
+            home = {
+              username = "jordan";
+              homeDirectory = "/Users/jordan";
+              stateVersion = "25.05";
+            };
+            imports = homeManagerCommonModules ++ extraHmModules;
+          };
+
           users.users.jordan = {
             name = "jordan";
             home = "/Users/jordan";
           };
         }
       ];
-      
-      # macOS packages  
+    };
+
+    # macOS-specific system configuration (nix-darwin)
+    darwinConfig = { pkgs, ... }: {
+      # macOS system packages
       environment.systemPackages = (map (name: pkgs.${name}) commonPackageNames) ++ (with pkgs; [
-        colima  # macOS-specific container runtime
+        colima
         mariadb
         libmysqlclient
         openssl_3
@@ -80,7 +94,7 @@
           }
         ];
         casks = [
-          "visual-studio-code" "ghostty" "dbeaver-community" 
+          "visual-studio-code" "ghostty" "dbeaver-community"
           "obsidian" "1password" "discord" "brave-browser"
           "protonvpn" "vlc" "zoom" "nikitabobko/tap/aerospace"
           "macwhisper"
@@ -94,68 +108,56 @@
       system.configurationRevision = self.rev or self.dirtyRev or null;
       system.stateVersion = 6;
     };
-    
-    # Linux-specific configuration  
-    linuxConfig = { pkgs, ... }: {
-      # Linux packages
-      home.packages = (map (name: pkgs.${name}) commonPackageNames) ++ (with pkgs; [
-        # Linux-specific tools
-        hyprland  # Your window manager
-        # Add other Linux-specific packages
-      ]);
-      
-      home.stateVersion = "25.05";
-    };
-    
+
   in
   {
     # macOS configurations
     darwinConfigurations = {
-      # Personal MacBook
-      "personal-macbook" = nix-darwin.lib.darwinSystem {
-        system = "aarch64-darwin";
-        modules = [ 
-          darwinConfig
-          # Personal-specific overrides can go here
-        ];
-      };
-      
-      # Work MacBook (for external config merging)
-      "work-macbook" = nix-darwin.lib.darwinSystem {
-        system = "aarch64-darwin"; 
-        modules = [ 
-          darwinConfig
-          # Work-specific config would be imported here
-          # ./work/work-config.nix  # From separate repo
-        ];
-      };
-      
-      # Legacy name for backward compatibility
-      "Jordans-MacBook-Pro" = nix-darwin.lib.darwinSystem {
-        system = "aarch64-darwin";
-        modules = [ darwinConfig ];
-      };
+      "personal-macbook" = mkDarwin [ ./nix/home/darwin.nix ];
+      "work-macbook" = mkDarwin [ ./nix/home/darwin.nix ];
+      "Jordans-MacBook-Pro" = mkDarwin [ ./nix/home/darwin.nix ];
     };
-    
+
     # Linux configurations (using home-manager)
     homeConfigurations = {
-      # Arch Linux + Hyprland
+      # Omarchy (Arch Linux) - desktop remains Omarchy-managed
+      "jordan@omarchy" = home-manager.lib.homeManagerConfiguration {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        modules = [
+          {
+            home = {
+              username = "jordan";
+              homeDirectory = "/home/jordan";
+              stateVersion = "25.05";
+            };
+          }
+        ] ++ homeManagerCommonModules ++ [
+          ./nix/home/omarchy.nix
+        ];
+      };
+
+      # Generic Linux host (replace hostname and homeDirectory as needed)
       "jordan@arch-pc" = home-manager.lib.homeManagerConfiguration {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
         modules = [
-          linuxConfig
-          # Linux-specific dotfiles and configs
-        ];
+          {
+            home = {
+              username = "jordan";
+              homeDirectory = "/home/jordan";
+              stateVersion = "25.05";
+            };
+          }
+        ] ++ homeManagerCommonModules;
       };
     };
-    
+
     # Development shells for any system
-    devShells = forAllSystems (system: 
+    devShells = forAllSystems (system:
       let pkgs = nixpkgs.legacyPackages.${system};
       in {
         default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            bat eza ripgrep fd delta gh neovim bottom 
+            bat eza ripgrep fd delta gh neovim bottom
             pandoc zellij lazygit gnupg openssl tor vim
           ];
         };

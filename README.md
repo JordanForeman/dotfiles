@@ -1,6 +1,6 @@
 # Jordan's Dotfiles
 
-A declarative macOS development environment managed with **nix-darwin**.
+Multi-platform dotfiles managed with **nix-darwin** (macOS) + **Home Manager** (macOS + Linux).
 
 ## 🚀 Quick Start
 
@@ -24,13 +24,8 @@ The install script will build and activate your entire development environment!
 
 ```
 dotfiles/
-├── flake.nix              # Main nix-darwin configuration
-├── nix/modules/           # Modular configuration files
-│   ├── git.nix            # Git configuration
-│   ├── vim.nix            # Vim configuration  
-│   ├── neovim.nix         # Neovim (LazyVim) configuration
-│   ├── zellij.nix         # Zellij terminal multiplexer
-│   └── ghostty.nix        # Ghostty terminal emulator
+├── flake.nix              # Flake entrypoint
+├── nix/home/              # Home Manager modules
 ├── .config/               # Application configurations
 │   ├── nvim/              # Neovim LazyVim setup
 │   ├── zellij/            # Zellij layouts and themes
@@ -99,7 +94,7 @@ homebrew.casks = [
 After making changes, rebuild and switch:
 
 ```bash
-darwin-rebuild switch --flake .#Jordans-MacBook-Pro
+darwin-rebuild switch --flake .#personal-macbook
 ```
 
 ## 🏗 Architecture 
@@ -122,13 +117,13 @@ This setup uses **nix-darwin** for declarative macOS system management:
 
 ### Building without switching
 ```bash
-darwin-rebuild build --flake .#Jordans-MacBook-Pro
+darwin-rebuild build --flake .#personal-macbook
 ```
 
-### Adding new configuration modules
-1. Create `nix/modules/your-module.nix`
-2. Add to `imports` in `flake.nix`
-3. Rebuild and switch
+### Adding new Home Manager modules
+1. Create `nix/home/your-module.nix`
+2. Add it to the appropriate `imports` list in `flake.nix`
+3. Rebuild/switch
 
 ### Language Version Management
 Currently using traditional tools (asdf/nvm/chruby). Nix alternatives available for future migration.
@@ -151,4 +146,3 @@ Make sure you're running as the correct user - nix-darwin uses `system.primaryUs
 
 **Previous workflow**: Individual shell scripts for each component  
 **Current workflow**: Single declarative configuration with `darwin-rebuild`
-
