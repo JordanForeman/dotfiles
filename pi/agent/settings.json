@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/src/core/settings/settings-schema.json",
+  "theme": "dark",
+  "defaultThinkingLevel": "medium",
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 20000
+  },
+  "retry": {
+    "enabled": true,
+    "maxRetries": 3
+  },
+  "enableSkillCommands": true,
+  "enabledModels": [
+    "claude-*",
+    "gpt-4o*",
+    "gemini-2*"
+  ]
+}

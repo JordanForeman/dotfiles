@@ -1,6 +1,10 @@
 { config, pkgs, lib, ... }:
 
 {
+  imports = [
+    ./pi.nix
+  ];
+
   programs.home-manager.enable = true;
 
   # nixpkgs is pinned via flake; avoid release-mismatch warnings.
