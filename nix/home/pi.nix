@@ -8,7 +8,13 @@
   # only the specific files/directories we want synced.
 
   home.file.".pi/agent/AGENTS.md".source = ../../pi/agent/AGENTS.md;
-  home.file.".pi/agent/settings.json".source = ../../pi/agent/settings.json;
+  # settings.json needs to be writable at runtime (Pi saves settings back to it).
+  # home.file creates read-only symlinks into the Nix store, so we copy it via
+  # an activation script instead.
+  home.activation.piSettings = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    install -Dm644 ${../../pi/agent/settings.json} \
+      "${config.home.homeDirectory}/.pi/agent/settings.json"
+  '';
   home.file.".pi/agent/keybindings.json".source = ../../pi/agent/keybindings.json;
 
   home.file.".pi/agent/extensions" = {
