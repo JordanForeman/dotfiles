@@ -21,9 +21,12 @@
     # User environment management (works on both macOS and Linux)
     home-manager.url = "github:nix-community/home-manager";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
+
+    # SQL TUI (uses its own nixpkgs pin for compatible Python deps)
+    sqlit.url = "github:Maxteabag/sqlit";
   };
 
-  outputs = inputs@{ self, nixpkgs, nix-darwin, home-manager }:
+  outputs = inputs@{ self, nixpkgs, nix-darwin, home-manager, sqlit }:
   let
     # Supported systems
     supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
@@ -50,6 +53,9 @@
           home-manager.useGlobalPkgs = true;
           home-manager.useUserPackages = true;
           home-manager.backupFileExtension = "backup";
+          home-manager.extraSpecialArgs = {
+            sqlit = sqlit.packages.aarch64-darwin.default;
+          };
           home-manager.users.jordan = {
             home = {
               username = "jordan";
@@ -123,6 +129,9 @@
       # Omarchy (Arch Linux) - desktop remains Omarchy-managed
       "jordan@omarchy" = home-manager.lib.homeManagerConfiguration {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        extraSpecialArgs = {
+          sqlit = sqlit.packages.x86_64-linux.default;
+        };
         modules = [
           {
             home = {
@@ -139,6 +148,9 @@
       # Generic Linux host (replace hostname and homeDirectory as needed)
       "jordan@arch-pc" = home-manager.lib.homeManagerConfiguration {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        extraSpecialArgs = {
+          sqlit = sqlit.packages.x86_64-linux.default;
+        };
         modules = [
           {
             home = {

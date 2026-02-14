@@ -1,5 +1,8 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, sqlit, ... }:
 
+let
+  pair-review = import ../pkgs/pair-review.nix { inherit pkgs; };
+in
 {
   imports = [
     ./pi.nix
@@ -39,6 +42,12 @@
 
     # Fly.io CLI
     flyctl
+
+    # SQL TUI
+    sqlit
+
+    # AI code review
+    pair-review
 
     chruby
     nodejs
