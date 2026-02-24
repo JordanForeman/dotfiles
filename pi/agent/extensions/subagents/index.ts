@@ -28,7 +28,35 @@ const MAX_ORCHESTRATION_STAGES = ORCHESTRATION_LIMITS.maxStages;
 const COLLAPSED_ITEM_COUNT = 8;
 const ACTIVE_WIDGET_KEY = "subagents-active";
 const ACTIVE_STATUS_KEY = "subagents";
-const EXPAND_HINT = keyHint("expandTools", "to expand");
+
+// Lazy-load keyHint to avoid theme initialization errors at import time
+let cachedExpandHint: string | null = null;
+function getExpandHint(): string {
+  if (!cachedExpandHint) {
+    try {
+      cachedExpandHint = keyHint("expandTools", "to expand");
+    } catch (error) {
+      // Theme not initialized yet, use fallback
+      cachedExpandHint = "(ctrl+o to expand)";
+    }
+  }
+  return cachedExpandHint;
+}
+
+// Lazy-load markdown theme to avoid initialization errors
+let cachedMarkdownTheme: ReturnType<typeof getMarkdownTheme> | null = null;
+function getMarkdownThemeSafe() {
+  if (!cachedMarkdownTheme) {
+    try {
+      cachedMarkdownTheme = getMarkdownTheme();
+    } catch (error) {
+      // Theme not initialized yet, return undefined to skip markdown rendering
+      // This is expected during extension loading and is safe to ignore
+      return undefined;
+    }
+  }
+  return cachedMarkdownTheme;
+}
 
 interface UsageStats {
   input: number;
@@ -1339,7 +1367,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       }
 
       if (!expanded && details.subagents.length > max) {
-        text += "\n" + theme.fg("muted", `... +${details.subagents.length - max} more (${EXPAND_HINT})`);
+        text += "\n" + theme.fg("muted", `... +${details.subagents.length - max} more (${getExpandHint()})`);
       }
 
       return new Text(text, 0, 0);
@@ -1971,7 +1999,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
       }
 
-      const mdTheme = getMarkdownTheme();
+      const mdTheme = getMarkdownThemeSafe();
 
       const renderDisplayItems = (items: DisplayItem[], limit?: number): string => {
         const shown = limit ? items.slice(-limit) : items;
@@ -2019,7 +2047,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           } else {
             text += `\n${renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT)}`;
             if (displayItems.length > COLLAPSED_ITEM_COUNT) {
-              text += `\n${theme.fg("muted", `(${EXPAND_HINT})`)}`;
+              text += `\n${theme.fg("muted", `(${getExpandHint()})`)}`;
             }
           }
 
@@ -2064,8 +2092,15 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
         container.addChild(new Spacer(1));
         container.addChild(new Text(theme.fg("muted", "Final output:"), 0, 0));
-        if (finalOutput) container.addChild(new Markdown(finalOutput, 0, 0, mdTheme));
-        else container.addChild(new Text(theme.fg("muted", "(no output)"), 0, 0));
+        if (finalOutput) {
+          if (mdTheme) {
+            container.addChild(new Markdown(finalOutput, 0, 0, mdTheme));
+          } else {
+            container.addChild(new Text(finalOutput, 0, 0));
+          }
+        } else {
+          container.addChild(new Text(theme.fg("muted", "(no output)"), 0, 0));
+        }
 
         const usage = formatUsageStats(item.usage, modelLabel(item.provider, item.model));
         if (usage) {
@@ -2136,7 +2171,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
             if (usage) text += `\n\n${theme.fg("dim", `Total: ${usage}`)}`;
           }
 
-          text += `\n${theme.fg("muted", `(${EXPAND_HINT})`)}`;
+          text += `\n${theme.fg("muted", `(${getExpandHint()})`)}`;
           return new Text(text, 0, 0);
         }
 
@@ -2236,7 +2271,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           if (usage) text += `\n\n${theme.fg("dim", `Total: ${usage}`)}`;
         }
 
-        text += `\n${theme.fg("muted", `(${EXPAND_HINT})`)}`;
+        text += `\n${theme.fg("muted", `(${getExpandHint()})`)}`;
         return new Text(text, 0, 0);
       }
 
@@ -2266,7 +2301,11 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
         if (finalOutput) {
           container.addChild(new Spacer(1));
-          container.addChild(new Markdown(finalOutput, 0, 0, mdTheme));
+          if (mdTheme) {
+            container.addChild(new Markdown(finalOutput, 0, 0, mdTheme));
+          } else {
+            container.addChild(new Text(finalOutput, 0, 0));
+          }
         }
 
         const usage = formatUsageStats(item.usage, modelLabel(item.provider, item.model));
