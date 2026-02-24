@@ -27,7 +27,8 @@ Project scope (optional):
 name: log-viewer
 description: Investigate logs and summarize likely root causes
 tools: read, grep, find, ls, bash
-model: claude-haiku-4-5
+provider: openai-codex
+model: gpt-5.3-codex
 tags: logs,debugging
 ---
 

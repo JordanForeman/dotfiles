@@ -41,6 +41,7 @@ interface SubagentRunResult {
   messages: Message[];
   stderr: string;
   usage: UsageStats;
+  provider?: string;
   model?: string;
   stopReason?: string;
   errorMessage?: string;
@@ -96,6 +97,11 @@ function formatUsageStats(
   if (usage.contextTokens && usage.contextTokens > 0) parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
   if (model) parts.push(model);
   return parts.join(" ");
+}
+
+function modelLabel(provider?: string, model?: string): string | undefined {
+  if (!model) return undefined;
+  return provider ? `${provider}/${model}` : model;
 }
 
 function getFinalOutput(messages: Message[]): string {
@@ -332,10 +338,12 @@ async function runSingleSubagent(
     messages: [],
     stderr: "",
     usage: makeUsage(),
+    provider: subagent.provider,
     model: subagent.model,
   };
 
   const commandArgs: string[] = ["--mode", "json", "-p", "--no-session"];
+  if (subagent.provider) commandArgs.push("--provider", subagent.provider);
   if (subagent.model) commandArgs.push("--model", subagent.model);
   if (subagent.tools?.length) commandArgs.push("--tools", subagent.tools.join(","));
 
@@ -391,6 +399,7 @@ async function runSingleSubagent(
               result.usage.contextTokens = usage.totalTokens || 0;
             }
 
+            if (!result.provider && message.provider) result.provider = message.provider;
             if (!result.model && message.model) result.model = message.model;
             if (message.stopReason) result.stopReason = message.stopReason;
             if (message.errorMessage) result.errorMessage = message.errorMessage;
@@ -572,7 +581,8 @@ async function scaffoldSubagent(name: string, description?: string): Promise<str
     `name: ${slug}`,
     `description: ${description?.trim() || "Describe what this subagent specializes in"}`,
     "tools: read, grep, find, ls",
-    "model: claude-haiku-4-5",
+    "provider: openai-codex",
+    "model: gpt-5.3-codex",
     "tags: scaffold",
     "---",
     "",
@@ -677,9 +687,11 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         }
 
         const lines = discovery.subagents.map((item) => {
-          const model = item.model ? ` model:${item.model}` : "";
+          const providerModel = item.model
+            ? ` model:${item.provider ? `${item.provider}/` : ""}${item.model}`
+            : "";
           const tools = item.tools?.length ? ` tools:${item.tools.join(",")}` : "";
-          return `- ${item.name} (${item.source}) — ${item.description}${model}${tools}`;
+          return `- ${item.name} (${item.source}) — ${item.description}${providerModel}${tools}`;
         });
 
         ctx.ui.notify(`Subagents (${scope}):\n${lines.join("\n")}`, "info");
@@ -706,6 +718,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           `${found.name} (${found.source})`,
           found.description,
           `path: ${found.filePath}`,
+          `provider: ${found.provider ?? "(default)"}`,
           `model: ${found.model ?? "(default)"}`,
           `tools: ${found.tools?.join(", ") ?? "(default)"}`,
           found.tags?.length ? `tags: ${found.tags.join(", ")}` : "",
@@ -755,9 +768,11 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           ? `No subagents found in scope \"${scope}\".`
           : discovery.subagents
               .map((item) => {
-                const model = item.model ? ` model:${item.model}` : "";
+                const providerModel = item.model
+                  ? ` model:${item.provider ? `${item.provider}/` : ""}${item.model}`
+                  : "";
                 const tools = item.tools?.length ? ` tools:${item.tools.join(",")}` : "";
-                return `- ${item.name} (${item.source}) — ${item.description}${model}${tools}`;
+                return `- ${item.name} (${item.source}) — ${item.description}${providerModel}${tools}`;
               })
               .join("\n");
 
@@ -771,6 +786,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
             name: item.name,
             source: item.source,
             description: item.description,
+            provider: item.provider,
             model: item.model,
             tools: item.tools,
             tags: item.tags,
@@ -795,6 +811,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
               name: string;
               source: "user" | "project";
               description: string;
+              provider?: string;
               model?: string;
               tools?: string[];
               filePath: string;
@@ -811,13 +828,15 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       let text = theme.fg("success", `Found ${details.subagents.length} subagents`);
 
       for (const item of details.subagents.slice(0, max)) {
-        const model = item.model ? ` model:${item.model}` : "";
+        const providerModel = item.model
+          ? ` model:${item.provider ? `${item.provider}/` : ""}${item.model}`
+          : "";
         const tools = item.tools?.length ? ` tools:${item.tools.join(",")}` : "";
         text +=
           "\n" +
           theme.fg("accent", `• ${item.name}`) +
           theme.fg("muted", ` (${item.source})`) +
-          theme.fg("dim", ` ${item.description}${model}${tools}`);
+          theme.fg("dim", ` ${item.description}${providerModel}${tools}`);
       }
 
       if (!expanded && details.subagents.length > max) {
@@ -1217,7 +1236,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
             }
           }
 
-          const usage = formatUsageStats(item.usage, item.model);
+          const usage = formatUsageStats(item.usage, modelLabel(item.provider, item.model));
           if (usage) text += `\n${theme.fg("dim", usage)}`;
           return new Text(text, 0, 0);
         }
@@ -1261,7 +1280,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         if (finalOutput) container.addChild(new Markdown(finalOutput, 0, 0, mdTheme));
         else container.addChild(new Text(theme.fg("muted", "(no output)"), 0, 0));
 
-        const usage = formatUsageStats(item.usage, item.model);
+        const usage = formatUsageStats(item.usage, modelLabel(item.provider, item.model));
         if (usage) {
           container.addChild(new Spacer(1));
           container.addChild(new Text(theme.fg("dim", usage), 0, 0));
@@ -1345,7 +1364,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           container.addChild(new Markdown(finalOutput, 0, 0, mdTheme));
         }
 
-        const usage = formatUsageStats(item.usage, item.model);
+        const usage = formatUsageStats(item.usage, modelLabel(item.provider, item.model));
         if (usage) container.addChild(new Text(theme.fg("dim", usage), 0, 0));
       }
 

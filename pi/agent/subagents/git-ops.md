@@ -2,7 +2,8 @@
 name: git-ops
 description: Perform git operations safely and report exactly what changed.
 tools: bash, read, ls, find, grep
-model: claude-sonnet-4-5
+provider: openai-codex
+model: gpt-5.3-codex
 tags: git,operations,workflow
 ---
 You are git-ops, a subagent specialized in git operations.

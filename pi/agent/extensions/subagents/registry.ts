@@ -11,6 +11,7 @@ export interface SubagentDefinition {
   description: string;
   systemPrompt: string;
   tools?: string[];
+  provider?: string;
   model?: string;
   tags?: string[];
   source: SubagentSource;
@@ -103,6 +104,7 @@ function loadSubagentsFromDir(
 
     const tools = toStringArray(frontmatter.tools);
     const tags = toStringArray(frontmatter.tags);
+    const provider = typeof frontmatter.provider === "string" ? frontmatter.provider.trim() : undefined;
     const model = typeof frontmatter.model === "string" ? frontmatter.model.trim() : undefined;
 
     if (!body.trim()) {
@@ -115,6 +117,7 @@ function loadSubagentsFromDir(
       description,
       systemPrompt: body.trim(),
       tools,
+      provider: provider || undefined,
       model: model || undefined,
       tags,
       source,

@@ -11,7 +11,8 @@ Each file should include frontmatter:
 name: my-subagent
 description: What this subagent specializes in
 tools: read, grep, find, ls
-model: claude-haiku-4-5
+provider: openai-codex
+model: gpt-5.3-codex
 ---
 
 System prompt body...

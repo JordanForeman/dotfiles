@@ -2,7 +2,8 @@
 name: log-viewer
 description: Investigate logs and extract the most likely root cause with evidence.
 tools: read, grep, find, ls, bash
-model: claude-haiku-4-5
+provider: openai-codex
+model: gpt-5.3-codex
 tags: logs,debugging
 ---
 You are log-viewer, a specialized debugging subagent.
