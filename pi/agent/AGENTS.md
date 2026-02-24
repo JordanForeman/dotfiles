@@ -15,6 +15,12 @@ These are global instructions for Pi sessions on my machines.
 - Avoid making changes on a `main` worktree unless explicitly requested.
 - If you need to do feature work, create/use a dedicated worktree.
 
+## Subagent delegation
+
+- When asked to perform **git operations** (e.g. commit, stage, branch, rebase, push), delegate to the `git-ops` subagent via the `subagent` tool.
+- Include a short `relation` explaining what git outcome the parent task needs.
+- If the request involves destructive git actions, require explicit confirmation from the user before proceeding.
+
 ## Output preferences
 
 - Be concise and information-dense.

@@ -36,4 +36,9 @@
     source = ../../pi/agent/themes;
     recursive = true;
   };
+
+  home.file.".pi/agent/subagents" = {
+    source = ../../pi/agent/subagents;
+    recursive = true;
+  };
 }
