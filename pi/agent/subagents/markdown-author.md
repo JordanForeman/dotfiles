@@ -2,8 +2,6 @@
 name: markdown-author
 description: Given information on a topic, authors a concise document in clearly structured and formatted markdown
 tools: read write bash ls grep find
-provider: anthropic
-model: claude-sonnet-4-5
 tags: documentation,writing
 ---
 

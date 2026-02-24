@@ -2,8 +2,6 @@
 name: code-explorer
 description: Research assistant that performs comprehensive exploration of codebases, domains, and related context. Use for deep investigation of code patterns, architecture, and domain knowledge.
 tools: read bash grep find ls
-provider: anthropic
-model: claude-sonnet-4-5
 tags: research,exploration
 ---
 

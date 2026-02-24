@@ -2,8 +2,6 @@
 name: code-explainer
 description: Expert teaching agent that provides comprehensive, adaptive instruction on complex coding concepts and domains
 tools: read bash grep find ls
-provider: anthropic
-model: claude-sonnet-4-5
 tags: documentation,education
 ---
 

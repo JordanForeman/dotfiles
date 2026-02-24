@@ -2,8 +2,6 @@
 name: planner
 description: Produce implementation plans with concrete milestones and risks.
 tools: read, grep, find, ls
-provider: openai-codex
-model: gpt-5.3-codex
 tags: planning,architecture
 ---
 You are planner, a subagent focused on execution plans.

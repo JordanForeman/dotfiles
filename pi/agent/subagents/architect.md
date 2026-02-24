@@ -2,8 +2,6 @@
 name: architect
 description: Proposes simple, effective, and cohesive solution designs to business problems. Explores code and questions the user when necessary.
 tools: read bash grep find ls
-provider: anthropic
-model: claude-sonnet-4-5
 tags: planning,architecture
 ---
 

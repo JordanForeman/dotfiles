@@ -423,6 +423,16 @@ function buildDelegatedPrompt(task: string, relation?: string): string {
 
 type PartialUpdateCallback = (result: SubagentRunResult) => void;
 
+function getParentModelInfo(
+  ctx: ExtensionContext
+): { provider: string; modelId: string } | undefined {
+  if (!ctx.model) return undefined;
+  return {
+    provider: ctx.model.provider,
+    modelId: ctx.model.id,
+  };
+}
+
 async function runSingleSubagent(
   baseCwd: string,
   subagents: SubagentDefinition[],
@@ -434,7 +444,8 @@ async function runSingleSubagent(
     step?: number;
   },
   signal: AbortSignal | undefined,
-  onUpdate?: PartialUpdateCallback
+  onUpdate?: PartialUpdateCallback,
+  parentModel?: { provider: string; modelId: string }
 ): Promise<SubagentRunResult> {
   const subagent = subagents.find((item) => item.name === args.subagent);
 
@@ -444,6 +455,10 @@ async function runSingleSubagent(
       stderr: `Unknown subagent: ${args.subagent}`,
     };
   }
+
+  // Use parent session's model if subagent doesn't specify one
+  const effectiveProvider = subagent.provider || parentModel?.provider;
+  const effectiveModel = subagent.model || parentModel?.modelId;
 
   const result: SubagentRunResult = {
     subagent: subagent.name,
@@ -455,13 +470,13 @@ async function runSingleSubagent(
     messages: [],
     stderr: "",
     usage: makeUsage(),
-    provider: subagent.provider,
-    model: subagent.model,
+    provider: effectiveProvider,
+    model: effectiveModel,
   };
 
   const commandArgs: string[] = ["--mode", "json", "-p", "--no-session"];
-  if (subagent.provider) commandArgs.push("--provider", subagent.provider);
-  if (subagent.model) commandArgs.push("--model", subagent.model);
+  if (effectiveProvider) commandArgs.push("--provider", effectiveProvider);
+  if (effectiveModel) commandArgs.push("--model", effectiveModel);
   if (subagent.tools?.length) commandArgs.push("--tools", subagent.tools.join(","));
 
   let tempDir: string | null = null;
@@ -1554,6 +1569,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       }
 
       try {
+        const parentModel = getParentModelInfo(ctx);
+
         if (hasSingle && params.subagent && params.task) {
           const title = `${params.subagent} (single)`;
           const running = [makeUnknownResult(params.subagent, params.task, relation)];
@@ -1577,7 +1594,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
                 content: [{ type: "text", text: getFinalOutput(partial.messages) || "(running...)" }],
                 details,
               });
-            }
+            },
+            parentModel
           );
 
           const details = makeDetails("single", [result]);
@@ -1650,7 +1668,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
                   ],
                   details,
                 });
-              }
+              },
+              parentModel
             );
 
             running[index] = result;
@@ -1769,6 +1788,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
                     ? `${stageSummary.done}/${stageSummary.total} complete`
                     : `task ${taskIndex + 1}`;
 
+
                   onUpdate?.({
                     content: [
                       {
@@ -1778,7 +1798,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
                     ],
                     details,
                   });
-                }
+                },
+                parentModel
               );
 
               stageStates[stageIndex].results[taskIndex] = result;
@@ -1870,7 +1891,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
                   content: [{ type: "text", text: `Chain step ${i + 1}/${params.chain!.length} running...` }],
                   details,
                 });
-              }
+              },
+              parentModel
             );
 
             results.push(result);

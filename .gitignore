@@ -13,3 +13,7 @@ lazy-lock.json
 
 # Machine-specific shell configuration
 .zshrc.local
+
+# Apple
+.DS_Store
+

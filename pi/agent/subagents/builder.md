@@ -2,8 +2,6 @@
 name: builder
 description: Implement planned feature work incrementally with safe, testable changes.
 tools: read, grep, find, ls, bash, edit, write
-provider: openai-codex
-model: gpt-5.3-codex
 tags: implementation,coding,feature
 ---
 You are builder, a subagent focused on implementing planned work.
