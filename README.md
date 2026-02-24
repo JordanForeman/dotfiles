@@ -4,7 +4,7 @@ Multi-platform dotfiles managed with **nix-darwin** (macOS) + **Home Manager** (
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Installation (All Systems)
 
 1. **Install Nix** (if not already installed):
    ```bash
@@ -18,7 +18,26 @@ Multi-platform dotfiles managed with **nix-darwin** (macOS) + **Home Manager** (
    ./install.sh
    ```
 
-The install script will build and activate your entire development environment!
+The install script **automatically detects your environment** and chooses the appropriate setup:
+
+### 💻 Personal Machines
+- **Full nix-darwin system management**
+- Installs system packages, GUI applications (via Homebrew)
+- Complete dotfile management with symlinks
+- Requires sudo for system-level changes
+
+### 🏢 Work-Provisioned Machines
+- **Automatically detected** via work system
+- **Home Manager only** (preserves existing system management)
+- Layers personal dotfiles on top of existing setup
+- **Zero conflicts** with work system tooling
+
+**What work integration does:**
+- ✅ Preserves work system and tooling
+- ✅ Ensures proper initialization order: work config → personal config
+- ✅ Installs personal productivity tools without package conflicts
+- ✅ Manages personal configs (`.gitconfig`, `.aliases`, neovim, zellij, etc.)
+- ✅ Creates layered shell that sources work tools first, then personal config
 
 ## 📁 Project Structure
 

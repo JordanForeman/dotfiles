@@ -8,9 +8,9 @@
     recursive = true;
   };
 
-  # Use Omarchy's Neovim configuration on macOS as well.
+  # Neovim configuration (reconciled)
   xdg.configFile."nvim" = {
-    source = ../../.config/nvim-omarchy;
+    source = ../../.config/nvim;
     recursive = true;
   };
 }

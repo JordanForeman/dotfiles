@@ -124,8 +124,27 @@
       "Jordans-MacBook-Pro" = mkDarwin [ ./nix/home/darwin.nix ];
     };
 
-    # Linux configurations (using home-manager)
+    # Home Manager configurations (including Shopify MacBook)
     homeConfigurations = {
+      # Shopify MacBook - Home Manager only (no nix-darwin) 
+      "jordan@shopify-macbook" = home-manager.lib.homeManagerConfiguration {
+        pkgs = nixpkgs.legacyPackages.aarch64-darwin;
+        extraSpecialArgs = {
+          sqlit = sqlit.packages.aarch64-darwin.default;
+        };
+        modules = [
+          {
+            home = {
+              username = "jordan";
+              homeDirectory = "/Users/jordan";
+              stateVersion = "25.05";
+            };
+          }
+        ] ++ homeManagerCommonModules ++ [
+          ./nix/home/shopify-macbook.nix
+        ];
+      };
+
       # Omarchy (Arch Linux) - desktop remains Omarchy-managed
       "jordan@omarchy" = home-manager.lib.homeManagerConfiguration {
         pkgs = nixpkgs.legacyPackages.x86_64-linux;

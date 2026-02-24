@@ -11,6 +11,27 @@ fi
 # Add wisely, as too many plugins slow down shell startup.
 plugins=(git)
 
+# Zsh plugins (managed by Nix)
+# Find and source zsh-autocomplete
+for plugin_path in $HOME/.nix-profile/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh \
+                   /nix/var/nix/profiles/default/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh \
+                   /run/current-system/sw/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh; do
+    if [[ -f "$plugin_path" ]]; then
+        source "$plugin_path"
+        break
+    fi
+done
+
+# Find and source zsh-autosuggestions
+for plugin_path in $HOME/.nix-profile/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+                   /nix/var/nix/profiles/default/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
+                   /run/current-system/sw/share/zsh-autosuggestions/zsh-autosuggestions.zsh; do
+    if [[ -f "$plugin_path" ]]; then
+        source "$plugin_path"
+        break
+    fi
+done
+
 # 🍻 Ensure brew is ready to go for linux
 if [[ "$(uname)" == "Linux" ]]; then
     test -d ~/.linuxbrew && eval "$(~/.linuxbrew/bin/brew shellenv)"
@@ -80,3 +101,7 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 # Make Go binaries available
 export GOPATH=$HOME/go
 export PATH=$PATH:$GOPATH/bin
+
+# Machine-specific configuration (not in dotfiles)
+# Create ~/.zshrc.local for work-specific initialization, custom paths, etc.
+[[ -f ~/.zshrc.local ]] && source ~/.zshrc.local

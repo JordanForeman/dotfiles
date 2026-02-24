@@ -4,3 +4,12 @@ result-*
 .direnv/
 *.bak
 lazy-lock.json
+
+# Backup files (from various tools)
+*.backup
+*.backup-*
+.backup-*
+*backup-before-*
+
+# Machine-specific shell configuration
+.zshrc.local

@@ -1,0 +1,17 @@
+# Sensitive credentials and secrets
+agent/secrets/
+agent/bin/*-mcp-cli
+agent/extensions/mcp-bridge/
+
+# Work-specific configuration
+agent/models.json
+agent-shopify/
+agent-work/
+
+# Session history (can contain sensitive info)
+agent/sessions/
+
+# Temporary and cache files
+*.log
+*.tmp
+.DS_Store

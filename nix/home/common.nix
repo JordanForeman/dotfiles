@@ -23,6 +23,7 @@ in
     recursive = true;
   };
 
+  # Default packages - can be overridden in specific configurations
   home.packages = with pkgs; [
     bat
     eza
@@ -46,14 +47,19 @@ in
     # SQL TUI
     sqlit
 
-    # AI code review
+    # AI code review  
     pair-review
 
+    # Development tools
     chruby
     nodejs
     python3
     python3Packages.pip
     go
     bun
+
+    # Zsh plugins
+    zsh-autocomplete
+    zsh-autosuggestions
   ];
 }
