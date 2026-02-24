@@ -85,6 +85,10 @@
     source = ../../pi/agent/extensions/safety-gate.ts;
   };
 
+  home.file.".pi/agent/extensions/pi-ask.ts" = {
+    source = ../../pi/agent/extensions/pi-ask.ts;
+  };
+
   # Pi settings template (can be customized locally)
   home.file.".pi/agent/settings-template.json" = {
     source = ../../pi/agent/settings.json;
