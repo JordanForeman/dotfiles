@@ -4,7 +4,12 @@ Markdown files in this directory are synced to:
 
 - `~/.pi/agent/subagents/*.md`
 
-Each file should include frontmatter:
+Orchestration configs can live in:
+
+- `~/.pi/agent/subagents/orchestrations/*.json`
+- `.pi/agent/subagents/orchestrations/*.json` (nearest ancestor project)
+
+Each subagent file should include frontmatter:
 
 ```md
 ---

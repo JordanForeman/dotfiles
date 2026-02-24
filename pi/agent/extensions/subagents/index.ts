@@ -4,10 +4,17 @@ import os from "node:os";
 import path from "node:path";
 import type { Message } from "@mariozechner/pi-ai";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { getMarkdownTheme, type ExtensionAPI, type ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { getMarkdownTheme, keyHint, type ExtensionAPI, type ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import {
+  discoverOrchestrations,
+  getUserOrchestrationDir,
+  ORCHESTRATION_LIMITS,
+  type OrchestrationConfigDefinition,
+  type OrchestrationStageConfig,
+} from "./orchestrations.js";
 import {
   discoverSubagents,
   getUserSubagentDir,
@@ -15,11 +22,13 @@ import {
   type SubagentScope,
 } from "./registry.js";
 
-const MAX_PARALLEL_TASKS = 8;
-const MAX_CONCURRENCY = 4;
+const MAX_PARALLEL_TASKS = ORCHESTRATION_LIMITS.maxParallelTasks;
+const MAX_CONCURRENCY = ORCHESTRATION_LIMITS.maxConcurrency;
+const MAX_ORCHESTRATION_STAGES = ORCHESTRATION_LIMITS.maxStages;
 const COLLAPSED_ITEM_COUNT = 8;
 const ACTIVE_WIDGET_KEY = "subagents-active";
 const ACTIVE_STATUS_KEY = "subagents";
+const EXPAND_HINT = keyHint("expandTools", "to expand");
 
 interface UsageStats {
   input: number;
@@ -47,13 +56,43 @@ interface SubagentRunResult {
   errorMessage?: string;
 }
 
+type ExecutionMode = "single" | "parallel" | "chain" | "orchestration";
+
+interface OrchestrationStageSummary {
+  index: number;
+  label: string;
+  total: number;
+  done: number;
+  running: number;
+  failed: number;
+}
+
 interface SubagentToolDetails {
-  mode: "single" | "parallel" | "chain";
+  mode: ExecutionMode;
   scope: SubagentScope;
   workflowId: string;
   relation?: string;
   projectRoot: string | null;
   results: SubagentRunResult[];
+  stages?: OrchestrationStageSummary[];
+  currentStage?: number;
+  orchestrationConfig?: {
+    name: string;
+    source: "user" | "project";
+    filePath: string;
+  };
+}
+
+interface RuntimeOrchestrationStage {
+  label?: string;
+  tasks: Array<{
+    subagent: string;
+    task: string;
+    relation?: string;
+    cwd?: string;
+  }>;
+  relation?: string;
+  concurrency?: number;
 }
 
 interface WorkflowStatus {
@@ -195,6 +234,25 @@ function isFailed(result: SubagentRunResult): boolean {
   return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
 }
 
+function summarizeOrchestrationStage(
+  stage: Pick<OrchestrationStageSummary, "index" | "label" | "total"> & {
+    results: SubagentRunResult[];
+  }
+): OrchestrationStageSummary {
+  const done = stage.results.filter((item) => item.exitCode !== -1).length;
+  const running = stage.results.filter((item) => item.exitCode === -1).length;
+  const failed = stage.results.filter((item) => item.exitCode !== -1 && isFailed(item)).length;
+
+  return {
+    index: stage.index,
+    label: stage.label,
+    total: stage.total,
+    done,
+    running,
+    failed,
+  };
+}
+
 function toWorkflowLines(details: SubagentToolDetails): string[] {
   if (details.mode === "single") {
     const result = details.results[0];
@@ -212,6 +270,33 @@ function toWorkflowLines(details: SubagentToolDetails): string[] {
     return [`${result.subagent}: ${status}`];
   }
 
+  if (details.mode === "orchestration") {
+    const stages = details.stages ?? [];
+    if (stages.length === 0) return ["orchestration: starting..."];
+
+    const completedStages = stages.filter((stage) => stage.total > 0 && stage.done >= stage.total).length;
+    const currentIndex = details.currentStage ?? Math.min(completedStages, stages.length - 1);
+    const stage = stages[currentIndex];
+
+    if (!stage) {
+      return [`orchestration: ${completedStages}/${stages.length} stages complete`];
+    }
+
+    const stageStatus =
+      stage.running > 0
+        ? `${stage.done}/${stage.total} done, ${stage.running} running`
+        : stage.done === 0
+          ? "pending"
+          : stage.failed > 0
+            ? `${stage.done}/${stage.total} done, ${stage.failed} failed`
+            : "done";
+
+    return [
+      `orchestration: ${completedStages}/${stages.length} stages complete`,
+      `stage ${stage.index + 1}: ${stage.label} (${stageStatus})`,
+    ];
+  }
+
   const running = details.results.filter((result) => result.exitCode === -1).length;
   const done = details.results.filter((result) => result.exitCode !== -1).length;
   return [`${details.mode}: ${done}/${details.results.length} done, ${running} running`];
@@ -227,7 +312,7 @@ function renderActiveWidget(ctx: { hasUI: boolean; ui: ExtensionCommandContext["
   }
 
   const workflows = Array.from(activeWorkflows.values()).sort((a, b) => b.updatedAt - a.updatedAt);
-  const lines: string[] = ["Subagent workflows"]; 
+  const lines: string[] = ["Subagent orchestration"];
 
   for (const workflow of workflows.slice(0, 3)) {
     lines.push(`• ${workflow.title}`);
@@ -236,10 +321,14 @@ function renderActiveWidget(ctx: { hasUI: boolean; ui: ExtensionCommandContext["
     }
   }
 
+  if (workflows.length > 3) {
+    lines.push(`… +${workflows.length - 3} more workflows`);
+  }
+
   ctx.ui.setWidget(ACTIVE_WIDGET_KEY, lines);
   ctx.ui.setStatus(
     ACTIVE_STATUS_KEY,
-    `${activeWorkflows.size} active workflow${activeWorkflows.size === 1 ? "" : "s"}`
+    `⚙ ${activeWorkflows.size} orchestration workflow${activeWorkflows.size === 1 ? "" : "s"}`
   );
 }
 
@@ -517,6 +606,23 @@ const ChainItemSchema = Type.Object({
   cwd: Type.Optional(Type.String({ description: "Working directory for the subagent process" })),
 });
 
+const OrchestrationStageSchema = Type.Object({
+  label: Type.Optional(Type.String({ description: "Optional stage label shown in widgets/results" })),
+  tasks: Type.Array(ParallelItemSchema, {
+    minItems: 1,
+    maxItems: MAX_PARALLEL_TASKS,
+    description: "Tasks in this stage run in parallel",
+  }),
+  relation: Type.Optional(Type.String({ description: "Default relation for all tasks in this stage" })),
+  concurrency: Type.Optional(
+    Type.Integer({
+      minimum: 1,
+      maximum: MAX_CONCURRENCY,
+      description: `Per-stage concurrency limit (1-${MAX_CONCURRENCY})`,
+    })
+  ),
+});
+
 const SubagentListParams = Type.Object({
   scope: Type.Optional(ScopeSchema),
   includePrompt: Type.Optional(
@@ -533,6 +639,25 @@ const SubagentInvokeParams = Type.Object({
   relation: Type.Optional(Type.String({ description: "How this invocation relates to the parent session" })),
   tasks: Type.Optional(Type.Array(ParallelItemSchema, { description: "Parallel mode" })),
   chain: Type.Optional(Type.Array(ChainItemSchema, { description: "Chain mode" })),
+  orchestration: Type.Optional(
+    Type.Array(OrchestrationStageSchema, {
+      minItems: 1,
+      maxItems: MAX_ORCHESTRATION_STAGES,
+      description: "Multi-stage orchestration mode (serial stages, parallel tasks per stage)",
+    })
+  ),
+  orchestrationConfig: Type.Optional(
+    Type.String({
+      description:
+        "Named orchestration config from ~/.pi/agent/subagents/orchestrations or .pi/agent/subagents/orchestrations",
+    })
+  ),
+  orchestrationConfigScope: Type.Optional(
+    StringEnum(["user", "project", "both"] as const, {
+      default: "both",
+      description: "Scope for orchestration config discovery",
+    })
+  ),
   scope: Type.Optional(ScopeSchema),
   confirmProjectSubagents: Type.Optional(
     Type.Boolean({
@@ -549,6 +674,58 @@ function parseScope(value: string | undefined): SubagentScope | undefined {
   return undefined;
 }
 
+function normalizeOrchestrationStages(stages: OrchestrationStageConfig[]): RuntimeOrchestrationStage[] {
+  return stages.map((stage) => ({
+    label: stage.label?.trim() || undefined,
+    relation: stage.relation?.trim() || undefined,
+    concurrency: stage.concurrency,
+    tasks: stage.tasks.map((task) => ({
+      subagent: task.subagent,
+      task: task.task,
+      relation: task.relation?.trim() || undefined,
+      cwd: task.cwd?.trim() || undefined,
+    })),
+  }));
+}
+
+function resolveOrchestrationConfigByName(
+  cwd: string,
+  scope: SubagentScope,
+  name: string
+): {
+  config?: OrchestrationConfigDefinition;
+  diagnostics: string[];
+  projectRoot: string | null;
+  error?: string;
+} {
+  const discovery = discoverOrchestrations(cwd, scope);
+  const target = name.trim().toLowerCase();
+
+  if (!target) {
+    return {
+      diagnostics: discovery.diagnostics,
+      projectRoot: discovery.projectRoot,
+      error: "orchestrationConfig must be a non-empty name.",
+    };
+  }
+
+  const config = discovery.orchestrations.find((item) => item.name.toLowerCase() === target);
+  if (!config) {
+    const available = discovery.orchestrations.map((item) => item.name).join(", ") || "(none)";
+    return {
+      diagnostics: discovery.diagnostics,
+      projectRoot: discovery.projectRoot,
+      error: `Orchestration config not found: ${name}. Available: ${available}`,
+    };
+  }
+
+  return {
+    config,
+    diagnostics: discovery.diagnostics,
+    projectRoot: discovery.projectRoot,
+  };
+}
+
 function usageCommandText(): string {
   return [
     "Usage:",
@@ -556,6 +733,11 @@ function usageCommandText(): string {
     "  /subagents show <name> [user|project|both]",
     "  /subagents paths",
     "  /subagents scaffold <name> [description]",
+    "  /subagents orchestrate <config-name> <task/relation>",
+    "  /subagents orchestration list [user|project|both]",
+    "  /subagents orchestration show <name> [user|project|both]",
+    "  /subagents orchestration paths",
+    "  /subagents orchestration scaffold <name> [description]",
   ].join("\n");
 }
 
@@ -604,6 +786,56 @@ async function scaffoldSubagent(name: string, description?: string): Promise<str
   return filePath;
 }
 
+async function scaffoldOrchestrationConfig(name: string, description?: string): Promise<string> {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/--+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (!slug) throw new Error("Orchestration name must contain letters or numbers.");
+
+  const dir = getUserOrchestrationDir();
+  const filePath = path.join(dir, `${slug}.json`);
+
+  if (fs.existsSync(filePath)) {
+    throw new Error(`Orchestration config already exists: ${filePath}`);
+  }
+
+  const config = {
+    name: slug,
+    description: description?.trim() || "Describe this orchestration workflow",
+    relation: "How this orchestration supports the parent objective",
+    scope: "both",
+    confirmProjectSubagents: true,
+    stages: [
+      {
+        label: "research",
+        tasks: [
+          {
+            subagent: "planner",
+            task: "Identify constraints and acceptance criteria",
+          },
+        ],
+      },
+      {
+        label: "synthesis",
+        tasks: [
+          {
+            subagent: "planner",
+            task: "Produce final recommendation using:\n\n{previous}",
+          },
+        ],
+      },
+    ],
+  };
+
+  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.writeFile(filePath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  return filePath;
+}
+
 function createWorkflowId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -619,7 +851,124 @@ function summarizeResults(results: SubagentRunResult[]): string {
     .join("\n\n");
 }
 
-const COMMAND_SUBCOMMANDS = ["list", "show", "paths", "scaffold", "help"];
+const COMMAND_SUBCOMMANDS = [
+  "list",
+  "show",
+  "paths",
+  "scaffold",
+  "orchestrate",
+  "orchestration",
+  "orchestrations",
+  "help",
+];
+const ORCHESTRATION_COMMAND_SUBCOMMANDS = ["list", "show", "paths", "scaffold", "help"];
+const SCOPE_VALUES: SubagentScope[] = ["user", "project", "both"];
+
+type CompletionInput = {
+  tokens: string[];
+  currentIndex: number;
+  currentLower: string;
+};
+
+function parseCompletionInput(prefix: string): CompletionInput {
+  const trimmed = prefix.trimStart();
+  if (!trimmed) {
+    return { tokens: [""], currentIndex: 0, currentLower: "" };
+  }
+
+  const endsWithWhitespace = /\s$/.test(trimmed);
+  const tokens = trimmed.split(/\s+/);
+  if (endsWithWhitespace) tokens.push("");
+
+  const currentIndex = Math.max(0, tokens.length - 1);
+  const currentLower = (tokens[currentIndex] ?? "").toLowerCase();
+
+  return { tokens, currentIndex, currentLower };
+}
+
+function makeCompletionItems(input: CompletionInput, candidates: string[]): AutocompleteItem[] | null {
+  const filtered = candidates
+    .filter((candidate) => candidate.toLowerCase().startsWith(input.currentLower))
+    .sort((a, b) => a.localeCompare(b));
+
+  if (filtered.length === 0) return null;
+
+  const baseTokens = input.tokens.slice(0, input.currentIndex);
+  return filtered.map((candidate) => {
+    const value = [...baseTokens, candidate].join(" ");
+    return { value, label: value };
+  });
+}
+
+function discoverOrchestrationNamesForCompletion(): string[] {
+  try {
+    return discoverOrchestrations(process.cwd(), "both").orchestrations.map((item) => item.name);
+  } catch {
+    return [];
+  }
+}
+
+function discoverSubagentNamesForCompletion(): string[] {
+  try {
+    return discoverSubagents(process.cwd(), "both").subagents.map((item) => item.name);
+  } catch {
+    return [];
+  }
+}
+
+function getSubagentCommandCompletions(prefix: string): AutocompleteItem[] | null {
+  const input = parseCompletionInput(prefix);
+  const rootCommand = (input.tokens[0] ?? "").toLowerCase();
+
+  if (input.currentIndex === 0) {
+    return makeCompletionItems(input, COMMAND_SUBCOMMANDS);
+  }
+
+  if (rootCommand === "list") {
+    if (input.currentIndex === 1) return makeCompletionItems(input, SCOPE_VALUES);
+    return null;
+  }
+
+  if (rootCommand === "show") {
+    if (input.currentIndex === 1) {
+      return makeCompletionItems(input, discoverSubagentNamesForCompletion());
+    }
+    if (input.currentIndex === 2) return makeCompletionItems(input, SCOPE_VALUES);
+    return null;
+  }
+
+  if (rootCommand === "orchestrate") {
+    if (input.currentIndex === 1) {
+      return makeCompletionItems(input, discoverOrchestrationNamesForCompletion());
+    }
+    return null;
+  }
+
+  if (rootCommand === "orchestration" || rootCommand === "orchestrations") {
+    if (input.currentIndex === 1) {
+      return makeCompletionItems(input, ORCHESTRATION_COMMAND_SUBCOMMANDS);
+    }
+
+    const action = (input.tokens[1] ?? "").toLowerCase();
+
+    if (action === "list") {
+      if (input.currentIndex === 2) return makeCompletionItems(input, SCOPE_VALUES);
+      return null;
+    }
+
+    if (action === "show") {
+      if (input.currentIndex === 2) {
+        return makeCompletionItems(input, discoverOrchestrationNamesForCompletion());
+      }
+      if (input.currentIndex === 3) return makeCompletionItems(input, SCOPE_VALUES);
+      return null;
+    }
+
+    return null;
+  }
+
+  return null;
+}
 
 export default function subagentsExtension(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
@@ -639,15 +988,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("subagents", {
-    description: "Manage subagent definitions",
-    getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
-      const input = prefix.trimStart().toLowerCase();
-      const items = COMMAND_SUBCOMMANDS.filter((item) => item.startsWith(input)).map((item) => ({
-        value: item,
-        label: item,
-      }));
-      return items.length > 0 ? items : null;
-    },
+    description: "Manage subagent definitions and orchestration configs",
+    getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => getSubagentCommandCompletions(prefix),
     handler: async (args, ctx) => {
       if (!ctx.hasUI) return;
 
@@ -665,13 +1007,170 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         return;
       }
 
+      if (command === "orchestrate") {
+        if (!rest[0]) {
+          ctx.ui.notify("Usage: /subagents orchestrate <config-name> <task/relation>", "warning");
+          return;
+        }
+
+        const configName = rest[0];
+        const relationText = rest.slice(1).join(" ").trim();
+        const resolved = resolveOrchestrationConfigByName(ctx.cwd, "both", configName);
+
+        if (!resolved.config) {
+          const diagnostics =
+            resolved.diagnostics.length > 0
+              ? `\nDiagnostics:\n${resolved.diagnostics.map((item) => `- ${item}`).join("\n")}`
+              : "";
+          ctx.ui.notify(`${resolved.error || "Failed to resolve orchestration config."}${diagnostics}`, "error");
+          return;
+        }
+
+        const payload = {
+          orchestrationConfig: resolved.config.name,
+          orchestrationConfigScope: "both",
+          relation:
+            relationText ||
+            resolved.config.relation ||
+            `Execute orchestration config \"${resolved.config.name}\" for the parent objective.`,
+        };
+
+        const request = [
+          "Invoke the subagent tool now with this exact JSON:",
+          "```json",
+          JSON.stringify(payload, null, 2),
+          "```",
+          "Do not modify the JSON.",
+        ].join("\n");
+
+        if (ctx.isIdle()) {
+          pi.sendUserMessage(request);
+        } else {
+          pi.sendUserMessage(request, { deliverAs: "followUp" });
+        }
+
+        ctx.ui.notify(`Queued orchestration: ${resolved.config.name}`, "info");
+        return;
+      }
+
+      if (command === "orchestration" || command === "orchestrations") {
+        const orchestrationAction = (rest[0] ?? "list").toLowerCase();
+        const orchestrationRest = rest.slice(1);
+
+        if (orchestrationAction === "help") {
+          ctx.ui.notify(
+            [
+              "Usage:",
+              "  /subagents orchestration list [user|project|both]",
+              "  /subagents orchestration show <name> [user|project|both]",
+              "  /subagents orchestration paths",
+              "  /subagents orchestration scaffold <name> [description]",
+            ].join("\n"),
+            "info"
+          );
+          return;
+        }
+
+        if (orchestrationAction === "paths") {
+          const discovery = discoverOrchestrations(ctx.cwd, "both");
+          const lines = [
+            "Orchestration config search paths:",
+            ...discovery.userDirs.map((dir) => `- user: ${dir}`),
+            ...discovery.projectDirs.map((dir) => `- project: ${dir}`),
+            `project root: ${discovery.projectRoot ?? "(none)"}`,
+          ];
+          ctx.ui.notify(lines.join("\n"), "info");
+          return;
+        }
+
+        if (orchestrationAction === "list") {
+          const scope = parseScope(orchestrationRest[0]) ?? "both";
+          const discovery = discoverOrchestrations(ctx.cwd, scope);
+
+          if (discovery.orchestrations.length === 0) {
+            ctx.ui.notify(`No orchestration configs found for scope \"${scope}\".`, "warning");
+            return;
+          }
+
+          const lines = discovery.orchestrations.map((item) => {
+            const stages = item.stages.length;
+            return `- ${item.name} (${item.source}) — ${item.description} stages:${stages}`;
+          });
+
+          ctx.ui.notify(`Orchestrations (${scope}):\n${lines.join("\n")}`, "info");
+          return;
+        }
+
+        if (orchestrationAction === "show") {
+          if (!orchestrationRest[0]) {
+            ctx.ui.notify("Usage: /subagents orchestration show <name> [scope]", "warning");
+            return;
+          }
+
+          const targetName = orchestrationRest[0].toLowerCase();
+          const scope = parseScope(orchestrationRest[1]) ?? "both";
+          const discovery = discoverOrchestrations(ctx.cwd, scope);
+          const found = discovery.orchestrations.find((item) => item.name.toLowerCase() === targetName);
+
+          if (!found) {
+            ctx.ui.notify(`Orchestration config not found: ${orchestrationRest[0]} (scope: ${scope})`, "warning");
+            return;
+          }
+
+          const lines = [
+            `${found.name} (${found.source})`,
+            found.description,
+            `path: ${found.filePath}`,
+            `scope default: ${found.scope ?? "(inherits tool scope)"}`,
+            `confirmProjectSubagents: ${found.confirmProjectSubagents ?? true}`,
+            `stages: ${found.stages.length}`,
+          ];
+
+          for (const [index, stage] of found.stages.entries()) {
+            lines.push(`  ${index + 1}. ${stage.label?.trim() || `stage-${index + 1}`} (${stage.tasks.length} tasks)`);
+          }
+
+          ctx.ui.notify(lines.join("\n"), "info");
+          return;
+        }
+
+        if (orchestrationAction === "scaffold") {
+          if (!orchestrationRest[0]) {
+            ctx.ui.notify("Usage: /subagents orchestration scaffold <name> [description]", "warning");
+            return;
+          }
+
+          const name = orchestrationRest[0];
+          const description = orchestrationRest.slice(1).join(" ").trim() || undefined;
+
+          try {
+            const filePath = await scaffoldOrchestrationConfig(name, description);
+            ctx.ui.notify(`Created orchestration scaffold: ${filePath}`, "info");
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            ctx.ui.notify(`Failed to scaffold orchestration config: ${message}`, "error");
+          }
+
+          return;
+        }
+
+        ctx.ui.notify("Usage: /subagents orchestration <list|show|paths|scaffold>", "warning");
+        return;
+      }
+
       if (command === "paths") {
-        const discovery = discoverSubagents(ctx.cwd, "both");
+        const subagentDiscovery = discoverSubagents(ctx.cwd, "both");
+        const orchestrationDiscovery = discoverOrchestrations(ctx.cwd, "both");
         const lines = [
           "Subagent search paths:",
-          ...discovery.userDirs.map((dir) => `- user: ${dir}`),
-          ...discovery.projectDirs.map((dir) => `- project: ${dir}`),
-          `project root: ${discovery.projectRoot ?? "(none)"}`,
+          ...subagentDiscovery.userDirs.map((dir) => `- user: ${dir}`),
+          ...subagentDiscovery.projectDirs.map((dir) => `- project: ${dir}`),
+          `project root: ${subagentDiscovery.projectRoot ?? "(none)"}`,
+          "",
+          "Orchestration config search paths:",
+          ...orchestrationDiscovery.userDirs.map((dir) => `- user: ${dir}`),
+          ...orchestrationDiscovery.projectDirs.map((dir) => `- project: ${dir}`),
+          `project root: ${orchestrationDiscovery.projectRoot ?? "(none)"}`,
         ];
         ctx.ui.notify(lines.join("\n"), "info");
         return;
@@ -840,7 +1339,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       }
 
       if (!expanded && details.subagents.length > max) {
-        text += "\n" + theme.fg("muted", `... +${details.subagents.length - max} more (Ctrl+O to expand)`);
+        text += "\n" + theme.fg("muted", `... +${details.subagents.length - max} more (${EXPAND_HINT})`);
       }
 
       return new Text(text, 0, 0);
@@ -852,41 +1351,136 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     label: "Subagent",
     description: [
       "Delegate work to specialized subagents loaded from ~/.pi/agent/subagents (default).",
-      "Supports single, parallel, and chain modes.",
+      "Supports single, parallel, chain, and staged orchestration modes.",
+      "Orchestration can be inline or loaded from named JSON configs in ~/.pi/agent/subagents/orchestrations.",
       "Use subagent_list first when you need to discover available subagents.",
       "Set relation to explain how delegated work maps to the parent session objective.",
     ].join(" "),
     parameters: SubagentInvokeParams,
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      const scope: SubagentScope = params.scope ?? "user";
-      const confirmProjectSubagents = params.confirmProjectSubagents ?? true;
+      const workflowId = createWorkflowId();
+
+      const inlineOrchestrationStages: RuntimeOrchestrationStage[] | undefined = params.orchestration?.map(
+        (stage) => ({
+          label: stage.label?.trim() || undefined,
+          relation: stage.relation?.trim() || undefined,
+          concurrency: stage.concurrency,
+          tasks: stage.tasks.map((task) => ({
+            subagent: task.subagent,
+            task: task.task,
+            relation: task.relation?.trim() || undefined,
+            cwd: task.cwd?.trim() || undefined,
+          })),
+        })
+      );
+
+      const hasInlineOrchestration = Boolean(inlineOrchestrationStages?.length);
+      const hasNamedOrchestration = Boolean(params.orchestrationConfig?.trim());
+
+      if (hasInlineOrchestration && hasNamedOrchestration) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Provide either orchestration or orchestrationConfig, not both.",
+            },
+          ],
+          details: {
+            mode: "orchestration",
+            scope: params.scope ?? "user",
+            workflowId,
+            relation: params.relation,
+            projectRoot: null,
+            results: [],
+          },
+          isError: true,
+        };
+      }
+
+      let orchestrationConfig: OrchestrationConfigDefinition | undefined;
+      let orchestrationStages: RuntimeOrchestrationStage[] | undefined = inlineOrchestrationStages;
+
+      if (hasNamedOrchestration && params.orchestrationConfig) {
+        const configScope: SubagentScope = params.orchestrationConfigScope ?? "both";
+        const resolved = resolveOrchestrationConfigByName(ctx.cwd, configScope, params.orchestrationConfig);
+
+        if (!resolved.config) {
+          const diagnostics =
+            resolved.diagnostics.length > 0
+              ? `\nDiagnostics:\n${resolved.diagnostics.map((item) => `- ${item}`).join("\n")}`
+              : "";
+          return {
+            content: [{ type: "text", text: `${resolved.error || "Failed to resolve orchestration config."}${diagnostics}` }],
+            details: {
+              mode: "orchestration",
+              scope: params.scope ?? "user",
+              workflowId,
+              relation: params.relation,
+              projectRoot: resolved.projectRoot,
+              results: [],
+            },
+            isError: true,
+          };
+        }
+
+        orchestrationConfig = resolved.config;
+        orchestrationStages = normalizeOrchestrationStages(resolved.config.stages);
+      }
+
+      const scope: SubagentScope = params.scope ?? orchestrationConfig?.scope ?? "user";
+      const confirmProjectSubagents =
+        params.confirmProjectSubagents ?? orchestrationConfig?.confirmProjectSubagents ?? true;
+      const relation = params.relation ?? orchestrationConfig?.relation;
 
       const discovery = discoverSubagents(ctx.cwd, scope);
       const subagents = discovery.subagents;
-      const workflowId = createWorkflowId();
 
       const hasSingle = Boolean(params.subagent && params.task);
       const hasParallel = Boolean(params.tasks?.length);
       const hasChain = Boolean(params.chain?.length);
-      const modeCount = Number(hasSingle) + Number(hasParallel) + Number(hasChain);
+      const hasOrchestration = Boolean(orchestrationStages?.length);
+      const modeCount = Number(hasSingle) + Number(hasParallel) + Number(hasChain) + Number(hasOrchestration);
+
+      const mode: ExecutionMode = hasOrchestration
+        ? "orchestration"
+        : hasChain
+          ? "chain"
+          : hasParallel
+            ? "parallel"
+            : "single";
 
       const makeDetails = (
-        mode: "single" | "parallel" | "chain",
-        results: SubagentRunResult[]
+        detailMode: ExecutionMode,
+        results: SubagentRunResult[],
+        options?: { stages?: OrchestrationStageSummary[]; currentStage?: number }
       ): SubagentToolDetails => ({
-        mode,
+        mode: detailMode,
         scope,
         workflowId,
-        relation: params.relation,
+        relation,
         projectRoot: discovery.projectRoot,
         results,
+        stages: options?.stages,
+        currentStage: options?.currentStage,
+        orchestrationConfig: orchestrationConfig
+          ? {
+              name: orchestrationConfig.name,
+              source: orchestrationConfig.source,
+              filePath: orchestrationConfig.filePath,
+            }
+          : undefined,
       });
 
       if (modeCount !== 1) {
         return {
-          content: [{ type: "text", text: "Provide exactly one mode: single, tasks, or chain." }],
-          details: makeDetails("single", []),
+          content: [
+            {
+              type: "text",
+              text: "Provide exactly one mode: single, tasks, chain, orchestration, or orchestrationConfig.",
+            },
+          ],
+          details: makeDetails(mode, []),
           isError: true,
         };
       }
@@ -894,7 +1488,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       if (subagents.length === 0) {
         return {
           content: [{ type: "text", text: `No subagents available in scope \"${scope}\".` }],
-          details: makeDetails(hasChain ? "chain" : hasParallel ? "parallel" : "single", []),
+          details: makeDetails(mode, []),
           isError: true,
         };
       }
@@ -904,6 +1498,11 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         if (hasSingle && params.subagent) requested.add(params.subagent);
         if (params.tasks) for (const item of params.tasks) requested.add(item.subagent);
         if (params.chain) for (const item of params.chain) requested.add(item.subagent);
+        if (orchestrationStages) {
+          for (const stage of orchestrationStages) {
+            for (const item of stage.tasks) requested.add(item.subagent);
+          }
+        }
 
         const projectSubagents = Array.from(requested)
           .map((name) => subagents.find((item) => item.name === name))
@@ -919,7 +1518,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           if (!confirmed) {
             return {
               content: [{ type: "text", text: "Cancelled: project-local subagents were not approved." }],
-              details: makeDetails(hasChain ? "chain" : hasParallel ? "parallel" : "single", []),
+              details: makeDetails(mode, []),
               isError: true,
             };
           }
@@ -929,7 +1528,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       try {
         if (hasSingle && params.subagent && params.task) {
           const title = `${params.subagent} (single)`;
-          const running = [makeUnknownResult(params.subagent, params.task, params.relation)];
+          const running = [makeUnknownResult(params.subagent, params.task, relation)];
           running[0].exitCode = -1;
           updateWorkflow(ctx, workflowId, title, toWorkflowLines(makeDetails("single", running)));
 
@@ -939,7 +1538,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
             {
               subagent: params.subagent,
               task: params.task,
-              relation: params.relation,
+              relation,
               cwd: params.cwd,
             },
             signal,
@@ -990,7 +1589,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
             subagent: item.subagent,
             source: "unknown",
             task: item.task,
-            relation: item.relation ?? params.relation,
+            relation: item.relation ?? relation,
             exitCode: -1,
             messages: [],
             stderr: "",
@@ -1006,7 +1605,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
               {
                 subagent: item.subagent,
                 task: item.task,
-                relation: item.relation ?? params.relation,
+                relation: item.relation ?? relation,
                 cwd: item.cwd,
               },
               signal,
@@ -1057,6 +1656,162 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           };
         }
 
+        if (hasOrchestration && orchestrationStages) {
+          if (orchestrationStages.length > MAX_ORCHESTRATION_STAGES) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Too many orchestration stages (${orchestrationStages.length}). Max is ${MAX_ORCHESTRATION_STAGES}.`,
+                },
+              ],
+              details: makeDetails("orchestration", []),
+              isError: true,
+            };
+          }
+
+          const title = `orchestration (${orchestrationStages.length} stages)`;
+          const stageStates = orchestrationStages.map((stage, index) => ({
+            index,
+            label: stage.label?.trim() || `stage-${index + 1}`,
+            total: stage.tasks.length,
+            results: [] as SubagentRunResult[],
+          }));
+
+          const buildDetails = (currentStage: number) =>
+            makeDetails("orchestration", stageStates.flatMap((stage) => stage.results), {
+              stages: stageStates.map((stage) => summarizeOrchestrationStage(stage)),
+              currentStage,
+            });
+
+          updateWorkflow(ctx, workflowId, title, toWorkflowLines(buildDetails(0)));
+          let previousOutput = "";
+
+          for (let stageIndex = 0; stageIndex < orchestrationStages.length; stageIndex++) {
+            const stage = orchestrationStages[stageIndex];
+            const stageRelation = stage.relation ?? relation;
+            const stageCount = orchestrationStages.length;
+            const concurrency = Math.max(1, Math.min(stage.concurrency ?? MAX_CONCURRENCY, MAX_CONCURRENCY));
+
+            stageStates[stageIndex].results = stage.tasks.map((item) => ({
+              subagent: item.subagent,
+              source: "unknown",
+              task: item.task.replace(/\{previous\}/g, previousOutput),
+              relation: item.relation ?? stageRelation,
+              step: stageIndex + 1,
+              exitCode: -1,
+              messages: [],
+              stderr: "",
+              usage: makeUsage(),
+            }));
+
+            const stageRunningDetails = buildDetails(stageIndex);
+            updateWorkflow(ctx, workflowId, title, toWorkflowLines(stageRunningDetails));
+            onUpdate?.({
+              content: [
+                {
+                  type: "text",
+                  text: `Orchestration stage ${stageIndex + 1}/${stageCount} running (${stageStates[stageIndex].label})`,
+                },
+              ],
+              details: stageRunningDetails,
+            });
+
+            const stageResults = await mapWithConcurrencyLimit(stage.tasks, concurrency, async (item, taskIndex) => {
+              const task = item.task.replace(/\{previous\}/g, previousOutput);
+
+              const result = await runSingleSubagent(
+                ctx.cwd,
+                subagents,
+                {
+                  subagent: item.subagent,
+                  task,
+                  relation: item.relation ?? stageRelation,
+                  cwd: item.cwd ?? orchestrationConfig?.cwd,
+                  step: stageIndex + 1,
+                },
+                signal,
+                (partial) => {
+                  stageStates[stageIndex].results[taskIndex] = partial;
+                  const details = buildDetails(stageIndex);
+                  updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
+
+                  const stageSummary = details.stages?.[stageIndex];
+                  const progress = stageSummary
+                    ? `${stageSummary.done}/${stageSummary.total} complete`
+                    : `task ${taskIndex + 1}`;
+
+                  onUpdate?.({
+                    content: [
+                      {
+                        type: "text",
+                        text: `Orchestration stage ${stageIndex + 1}/${stageCount}: ${progress}`,
+                      },
+                    ],
+                    details,
+                  });
+                }
+              );
+
+              stageStates[stageIndex].results[taskIndex] = result;
+              const details = buildDetails(stageIndex);
+              updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
+              onUpdate?.({
+                content: [
+                  {
+                    type: "text",
+                    text: `Orchestration stage ${stageIndex + 1}/${stageCount}: ${stageStates[stageIndex].label}`,
+                  },
+                ],
+                details,
+              });
+
+              return result;
+            });
+
+            stageStates[stageIndex].results = stageResults;
+
+            const failed = stageResults.find((item) => isFailed(item));
+            const successfulOutputs = stageResults
+              .filter((item) => !isFailed(item))
+              .map((item) => getFinalOutput(item.messages).trim())
+              .filter(Boolean);
+            previousOutput = successfulOutputs.join("\n\n");
+
+            if (failed) {
+              const details = buildDetails(stageIndex);
+              const error = failed.errorMessage || failed.stderr || getFinalOutput(failed.messages) || "(no output)";
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Orchestration stopped at stage ${stageIndex + 1} (${stageStates[stageIndex].label}): ${error}`,
+                  },
+                ],
+                details,
+                isError: true,
+              };
+            }
+          }
+
+          const details = buildDetails(orchestrationStages.length - 1);
+          const finalOutputs = stageStates[stageStates.length - 1]?.results
+            .map((item) => getFinalOutput(item.messages).trim())
+            .filter(Boolean);
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: finalOutputs?.length
+                  ? finalOutputs.join("\n\n---\n\n")
+                  : `Orchestration complete (${orchestrationStages.length} stages).`,
+              },
+            ],
+            details,
+          };
+        }
+
         if (hasChain && params.chain) {
           const title = `chain (${params.chain.length})`;
           const results: SubagentRunResult[] = [];
@@ -1074,7 +1829,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
               {
                 subagent: item.subagent,
                 task,
-                relation: item.relation ?? params.relation,
+                relation: item.relation ?? relation,
                 cwd: item.cwd,
                 step: i + 1,
               },
@@ -1119,7 +1874,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
         return {
           content: [{ type: "text", text: "Invalid subagent invocation." }],
-          details: makeDetails("single", []),
+          details: makeDetails(mode, []),
           isError: true,
         };
       } finally {
@@ -1128,7 +1883,39 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     },
 
     renderCall(args, theme) {
-      const scope: SubagentScope = args.scope ?? "user";
+      const scope = args.scope ?? (args.orchestrationConfig ? "auto" : "user");
+
+      if (args.orchestrationConfig && !args.orchestration?.length) {
+        let text =
+          theme.fg("toolTitle", theme.bold("subagent ")) +
+          theme.fg("accent", `orchestration-config ${args.orchestrationConfig}`) +
+          theme.fg("muted", ` [${scope}]`);
+
+        if (args.orchestrationConfigScope) {
+          text += `\n  ${theme.fg("muted", "config scope:")} ${theme.fg("dim", args.orchestrationConfigScope)}`;
+        }
+
+        return new Text(text, 0, 0);
+      }
+
+      if (args.orchestration?.length) {
+        let text =
+          theme.fg("toolTitle", theme.bold("subagent ")) +
+          theme.fg("accent", `orchestration (${args.orchestration.length} stages)`) +
+          theme.fg("muted", ` [${scope}]`);
+
+        for (const [index, stage] of args.orchestration.slice(0, 3).entries()) {
+          const label = stage.label?.trim() || `stage-${index + 1}`;
+          const taskCount = stage.tasks.length;
+          text += `\n  ${theme.fg("muted", `${index + 1}.`)} ${theme.fg("accent", label)} ${theme.fg("dim", `${taskCount} task${taskCount === 1 ? "" : "s"}`)}`;
+        }
+
+        if (args.orchestration.length > 3) {
+          text += `\n  ${theme.fg("muted", `... +${args.orchestration.length - 3} more`)}`;
+        }
+
+        return new Text(text, 0, 0);
+      }
 
       if (args.chain?.length) {
         let text =
@@ -1232,7 +2019,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           } else {
             text += `\n${renderDisplayItems(displayItems, COLLAPSED_ITEM_COUNT)}`;
             if (displayItems.length > COLLAPSED_ITEM_COUNT) {
-              text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
+              text += `\n${theme.fg("muted", `(${EXPAND_HINT})`)}`;
             }
           }
 
@@ -1289,6 +2076,124 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         return container;
       }
 
+      if (details.mode === "orchestration") {
+        const stages = details.stages ?? [];
+        const currentStage = details.currentStage ?? -1;
+        const completedStages = stages.filter((stage) => stage.total > 0 && stage.done >= stage.total).length;
+        const runningStages = stages.filter((stage) => stage.running > 0).length;
+        const failedStages = stages.filter((stage) => stage.failed > 0).length;
+
+        const orchestrationIcon =
+          runningStages > 0
+            ? theme.fg("warning", "⏳")
+            : failedStages > 0
+              ? theme.fg("warning", "◐")
+              : theme.fg("success", "✓");
+
+        const header =
+          `${orchestrationIcon} ${theme.fg("toolTitle", theme.bold("orchestration "))}` +
+          theme.fg("accent", `${completedStages}/${stages.length} stages complete`);
+        const configInfo = details.orchestrationConfig
+          ? `${details.orchestrationConfig.name} (${details.orchestrationConfig.source})`
+          : undefined;
+
+        if (!expanded || runningStages > 0) {
+          let text = header;
+          if (configInfo) {
+            text += `\n${theme.fg("muted", "config: ")}${theme.fg("dim", configInfo)}`;
+          }
+          const max = expanded ? stages.length : 6;
+
+          for (const stage of stages.slice(0, max)) {
+            const icon =
+              stage.running > 0
+                ? theme.fg("warning", "⏳")
+                : stage.done === 0
+                  ? theme.fg("muted", "○")
+                  : stage.failed > 0
+                    ? theme.fg("error", "✗")
+                    : theme.fg("success", "✓");
+
+            const status =
+              stage.running > 0
+                ? `${stage.done}/${stage.total} done, ${stage.running} running`
+                : stage.done === 0
+                  ? "pending"
+                  : stage.failed > 0
+                    ? `${stage.done}/${stage.total} done, ${stage.failed} failed`
+                    : `${stage.done}/${stage.total} done`;
+
+            const marker = stage.index === currentStage ? theme.fg("accent", "→ ") : "  ";
+            text += `\n${marker}${icon} ${theme.fg("accent", stage.label)} ${theme.fg("dim", status)}`;
+          }
+
+          if (!expanded && stages.length > max) {
+            text += `\n${theme.fg("muted", `... +${stages.length - max} more stages`)}`;
+          }
+
+          if (runningStages === 0) {
+            const usage = formatUsageStats(aggregate);
+            if (usage) text += `\n\n${theme.fg("dim", `Total: ${usage}`)}`;
+          }
+
+          text += `\n${theme.fg("muted", `(${EXPAND_HINT})`)}`;
+          return new Text(text, 0, 0);
+        }
+
+        const container = new Container();
+        container.addChild(new Text(header, 0, 0));
+        if (configInfo) {
+          container.addChild(new Text(theme.fg("muted", "config: ") + theme.fg("dim", configInfo), 0, 0));
+        }
+
+        const byStage = new Map<number, SubagentRunResult[]>();
+        for (const item of details.results) {
+          const key = item.step ?? 0;
+          const list = byStage.get(key) ?? [];
+          list.push(item);
+          byStage.set(key, list);
+        }
+
+        for (const stage of stages) {
+          const icon =
+            stage.failed > 0
+              ? theme.fg("error", "✗")
+              : stage.done === 0
+                ? theme.fg("muted", "○")
+                : theme.fg("success", "✓");
+          container.addChild(new Spacer(1));
+          container.addChild(
+            new Text(
+              `${theme.fg("muted", `${stage.index + 1}.`)} ${theme.fg("accent", stage.label)} ${icon} ${theme.fg("dim", `${stage.done}/${stage.total}`)}`,
+              0,
+              0
+            )
+          );
+
+          for (const item of byStage.get(stage.index + 1) ?? []) {
+            const itemIcon = isFailed(item) ? theme.fg("error", "✗") : theme.fg("success", "✓");
+            container.addChild(new Text(`  ${itemIcon} ${theme.fg("accent", item.subagent)}`, 0, 0));
+
+            const finalOutput = getFinalOutput(item.messages).trim();
+            if (finalOutput) {
+              const preview = finalOutput.length > 220 ? `${finalOutput.slice(0, 220)}...` : finalOutput;
+              container.addChild(new Text(`    ${theme.fg("toolOutput", preview)}`, 0, 0));
+            }
+
+            const usage = formatUsageStats(item.usage, modelLabel(item.provider, item.model));
+            if (usage) container.addChild(new Text(`    ${theme.fg("dim", usage)}`, 0, 0));
+          }
+        }
+
+        const usage = formatUsageStats(aggregate);
+        if (usage) {
+          container.addChild(new Spacer(1));
+          container.addChild(new Text(theme.fg("dim", `Total: ${usage}`), 0, 0));
+        }
+
+        return container;
+      }
+
       const completed = details.results.filter((item) => item.exitCode !== -1).length;
       const running = details.results.length - completed;
       const ok = details.results.filter((item) => !isFailed(item) && item.exitCode !== -1).length;
@@ -1331,7 +2236,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           if (usage) text += `\n\n${theme.fg("dim", `Total: ${usage}`)}`;
         }
 
-        text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
+        text += `\n${theme.fg("muted", `(${EXPAND_HINT})`)}`;
         return new Text(text, 0, 0);
       }
 
