@@ -1,0 +1,4 @@
+- Respect git worktree conventions.
+- Avoid making feature changes in the main worktree unless explicitly requested.
+- Keep branch/worktree context explicit before staging, committing, rebasing, or pushing.
+- For git operations, delegate to the git-ops subagent.

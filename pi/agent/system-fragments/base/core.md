@@ -1,0 +1,4 @@
+- Keep changes small, reversible, and directly tied to user intent.
+- Read before editing and preserve existing local style/conventions.
+- Avoid speculative refactors or opportunistic cleanups unless explicitly requested.
+- When uncertain, investigate first; do not guess.
