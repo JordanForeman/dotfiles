@@ -15,6 +15,7 @@ import {
   type OrchestrationConfigDefinition,
   type OrchestrationStageConfig,
 } from "./orchestrations.js";
+import { createOrchestrationStateEngine } from "./orchestration-machine.js";
 import {
   discoverSubagents,
   getUserSubagentDir,
@@ -1725,140 +1726,199 @@ export default function subagentsExtension(pi: ExtensionAPI) {
             results: [] as SubagentRunResult[],
           }));
 
-          const buildDetails = (currentStage: number) =>
-            makeDetails("orchestration", stageStates.flatMap((stage) => stage.results), {
-              stages: stageStates.map((stage) => summarizeOrchestrationStage(stage)),
-              currentStage,
+          const orchestrationState = createOrchestrationStateEngine(
+            stageStates.map((stage) => ({
+              label: stage.label,
+              total: stage.total,
+            }))
+          );
+          orchestrationState.start();
+          orchestrationState.send({ type: "START" });
+
+          const buildDetails = () => {
+            const snapshot = orchestrationState.getState();
+            return makeDetails("orchestration", stageStates.flatMap((stage) => stage.results), {
+              stages: snapshot.stages,
+              currentStage: snapshot.currentStage,
             });
+          };
 
-          updateWorkflow(ctx, workflowId, title, toWorkflowLines(buildDetails(0)));
-          let previousOutput = "";
+          try {
+            updateWorkflow(ctx, workflowId, title, toWorkflowLines(buildDetails()));
+            let previousOutput = "";
 
-          for (let stageIndex = 0; stageIndex < orchestrationStages.length; stageIndex++) {
-            const stage = orchestrationStages[stageIndex];
-            const stageRelation = stage.relation ?? relation;
-            const stageCount = orchestrationStages.length;
-            const concurrency = Math.max(1, Math.min(stage.concurrency ?? MAX_CONCURRENCY, MAX_CONCURRENCY));
+            for (let stageIndex = 0; stageIndex < orchestrationStages.length; stageIndex++) {
+              const stage = orchestrationStages[stageIndex];
+              const stageRelation = stage.relation ?? relation;
+              const stageCount = orchestrationStages.length;
+              const concurrency = Math.max(1, Math.min(stage.concurrency ?? MAX_CONCURRENCY, MAX_CONCURRENCY));
 
-            stageStates[stageIndex].results = stage.tasks.map((item) => ({
-              subagent: item.subagent,
-              source: "unknown",
-              task: item.task.replace(/\{previous\}/g, previousOutput),
-              relation: item.relation ?? stageRelation,
-              step: stageIndex + 1,
-              exitCode: -1,
-              messages: [],
-              stderr: "",
-              usage: makeUsage(),
-            }));
+              stageStates[stageIndex].results = stage.tasks.map((item) => ({
+                subagent: item.subagent,
+                source: "unknown",
+                task: item.task.replace(/\{previous\}/g, previousOutput),
+                relation: item.relation ?? stageRelation,
+                step: stageIndex + 1,
+                exitCode: -1,
+                messages: [],
+                stderr: "",
+                usage: makeUsage(),
+              }));
 
-            const stageRunningDetails = buildDetails(stageIndex);
-            updateWorkflow(ctx, workflowId, title, toWorkflowLines(stageRunningDetails));
-            onUpdate?.({
-              content: [
-                {
-                  type: "text",
-                  text: `Orchestration stage ${stageIndex + 1}/${stageCount} running (${stageStates[stageIndex].label})`,
-                },
-              ],
-              details: stageRunningDetails,
-            });
+              orchestrationState.send({ type: "STAGE_STARTED", stageIndex });
+              const initialSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
+              orchestrationState.send({
+                type: "STAGE_PROGRESS",
+                stageIndex,
+                done: initialSummary.done,
+                running: initialSummary.running,
+                failed: initialSummary.failed,
+              });
 
-            const stageResults = await mapWithConcurrencyLimit(stage.tasks, concurrency, async (item, taskIndex) => {
-              const task = item.task.replace(/\{previous\}/g, previousOutput);
-
-              const result = await runSingleSubagent(
-                ctx.cwd,
-                subagents,
-                {
-                  subagent: item.subagent,
-                  task,
-                  relation: item.relation ?? stageRelation,
-                  cwd: item.cwd ?? orchestrationConfig?.cwd,
-                  step: stageIndex + 1,
-                },
-                signal,
-                (partial) => {
-                  stageStates[stageIndex].results[taskIndex] = partial;
-                  const details = buildDetails(stageIndex);
-                  updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
-
-                  const stageSummary = details.stages?.[stageIndex];
-                  const progress = stageSummary
-                    ? `${stageSummary.done}/${stageSummary.total} complete`
-                    : `task ${taskIndex + 1}`;
-
-
-                  onUpdate?.({
-                    content: [
-                      {
-                        type: "text",
-                        text: `Orchestration stage ${stageIndex + 1}/${stageCount}: ${progress}`,
-                      },
-                    ],
-                    details,
-                  });
-                },
-                parentModel
-              );
-
-              stageStates[stageIndex].results[taskIndex] = result;
-              const details = buildDetails(stageIndex);
-              updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
+              const stageRunningDetails = buildDetails();
+              updateWorkflow(ctx, workflowId, title, toWorkflowLines(stageRunningDetails));
               onUpdate?.({
                 content: [
                   {
                     type: "text",
-                    text: `Orchestration stage ${stageIndex + 1}/${stageCount}: ${stageStates[stageIndex].label}`,
+                    text: `Orchestration stage ${stageIndex + 1}/${stageCount} running (${stageStates[stageIndex].label})`,
                   },
                 ],
-                details,
+                details: stageRunningDetails,
               });
 
-              return result;
-            });
+              const stageResults = await mapWithConcurrencyLimit(stage.tasks, concurrency, async (item, taskIndex) => {
+                const task = item.task.replace(/\{previous\}/g, previousOutput);
 
-            stageStates[stageIndex].results = stageResults;
+                const result = await runSingleSubagent(
+                  ctx.cwd,
+                  subagents,
+                  {
+                    subagent: item.subagent,
+                    task,
+                    relation: item.relation ?? stageRelation,
+                    cwd: item.cwd ?? orchestrationConfig?.cwd,
+                    step: stageIndex + 1,
+                  },
+                  signal,
+                  (partial) => {
+                    stageStates[stageIndex].results[taskIndex] = partial;
+                    const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
+                    orchestrationState.send({
+                      type: "STAGE_PROGRESS",
+                      stageIndex,
+                      done: stageSummary.done,
+                      running: stageSummary.running,
+                      failed: stageSummary.failed,
+                    });
 
-            const failed = stageResults.find((item) => isFailed(item));
-            const successfulOutputs = stageResults
-              .filter((item) => !isFailed(item))
+                    const details = buildDetails();
+                    updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
+
+                    const stageProgress = details.stages?.[stageIndex];
+                    const progress = stageProgress
+                      ? `${stageProgress.done}/${stageProgress.total} complete`
+                      : `task ${taskIndex + 1}`;
+
+                    onUpdate?.({
+                      content: [
+                        {
+                          type: "text",
+                          text: `Orchestration stage ${stageIndex + 1}/${stageCount}: ${progress}`,
+                        },
+                      ],
+                      details,
+                    });
+                  },
+                  parentModel
+                );
+
+                stageStates[stageIndex].results[taskIndex] = result;
+                const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
+                orchestrationState.send({
+                  type: "STAGE_PROGRESS",
+                  stageIndex,
+                  done: stageSummary.done,
+                  running: stageSummary.running,
+                  failed: stageSummary.failed,
+                });
+
+                const details = buildDetails();
+                updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
+                onUpdate?.({
+                  content: [
+                    {
+                      type: "text",
+                      text: `Orchestration stage ${stageIndex + 1}/${stageCount}: ${stageStates[stageIndex].label}`,
+                    },
+                  ],
+                  details,
+                });
+
+                return result;
+              });
+
+              stageStates[stageIndex].results = stageResults;
+
+              const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
+              orchestrationState.send({
+                type: "STAGE_PROGRESS",
+                stageIndex,
+                done: stageSummary.done,
+                running: stageSummary.running,
+                failed: stageSummary.failed,
+              });
+
+              const failed = stageResults.find((item) => isFailed(item));
+              const successfulOutputs = stageResults
+                .filter((item) => !isFailed(item))
+                .map((item) => getFinalOutput(item.messages).trim())
+                .filter(Boolean);
+              previousOutput = successfulOutputs.join("\n\n");
+
+              if (failed) {
+                const error = failed.errorMessage || failed.stderr || getFinalOutput(failed.messages) || "(no output)";
+                orchestrationState.send({ type: "STAGE_FAILED", stageIndex, error });
+                const details = buildDetails();
+                return {
+                  content: [
+                    {
+                      type: "text",
+                      text: `Orchestration stopped at stage ${stageIndex + 1} (${stageStates[stageIndex].label}): ${error}`,
+                    },
+                  ],
+                  details,
+                  isError: true,
+                };
+              }
+
+              orchestrationState.send({
+                type: "STAGE_COMPLETED",
+                stageIndex,
+                previousOutput,
+              });
+            }
+
+            orchestrationState.send({ type: "COMPLETE" });
+            const details = buildDetails();
+            const finalOutputs = stageStates[stageStates.length - 1]?.results
               .map((item) => getFinalOutput(item.messages).trim())
               .filter(Boolean);
-            previousOutput = successfulOutputs.join("\n\n");
 
-            if (failed) {
-              const details = buildDetails(stageIndex);
-              const error = failed.errorMessage || failed.stderr || getFinalOutput(failed.messages) || "(no output)";
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: `Orchestration stopped at stage ${stageIndex + 1} (${stageStates[stageIndex].label}): ${error}`,
-                  },
-                ],
-                details,
-                isError: true,
-              };
-            }
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: finalOutputs?.length
+                    ? finalOutputs.join("\n\n---\n\n")
+                    : `Orchestration complete (${orchestrationStages.length} stages).`,
+                },
+              ],
+              details,
+            };
+          } finally {
+            orchestrationState.stop();
           }
-
-          const details = buildDetails(orchestrationStages.length - 1);
-          const finalOutputs = stageStates[stageStates.length - 1]?.results
-            .map((item) => getFinalOutput(item.messages).trim())
-            .filter(Boolean);
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: finalOutputs?.length
-                  ? finalOutputs.join("\n\n---\n\n")
-                  : `Orchestration complete (${orchestrationStages.length} stages).`,
-              },
-            ],
-            details,
-          };
         }
 
         if (hasChain && params.chain) {

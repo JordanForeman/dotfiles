@@ -11,6 +11,9 @@ lazy-lock.json
 .backup-*
 *backup-before-*
 
+# Extension runtime dependencies
+pi/agent/extensions/subagents/node_modules/
+
 # Machine-specific shell configuration
 .zshrc.local
 

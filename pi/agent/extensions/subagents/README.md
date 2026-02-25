@@ -12,7 +12,21 @@ Claude Code-style delegated subagents for Pi.
   - orchestration (serial stages + parallel tasks per stage)
 - `/subagents` command: list/show/paths/scaffold for subagents + orchestration configs
 - Runtime TypeBox validation for orchestration JSON configs (shape + limits)
+- XState-backed orchestration lifecycle state machine (explicit stage start/progress/complete/fail transitions)
 - Active orchestration widget + status affordances in the session UI while subagents are running
+
+## Dependencies
+
+This extension depends on `xstate`.
+
+In this dotfiles setup, dependencies are installed automatically by Home Manager activation (`nix/home/pi.nix`) during `./install.sh` / `home-manager switch`, so manual steps are typically not needed.
+
+Manual fallback:
+
+```bash
+cd ~/.pi/agent/extensions/subagents
+npm ci --omit=dev
+```
 
 ## Subagent definition locations
 

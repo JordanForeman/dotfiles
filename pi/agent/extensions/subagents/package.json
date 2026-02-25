@@ -1,0 +1,8 @@
+{
+  "name": "pi-subagents-extension",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "xstate": "^5.20.2"
+  }
+}
