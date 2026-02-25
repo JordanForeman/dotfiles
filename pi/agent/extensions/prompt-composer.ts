@@ -13,6 +13,7 @@ type Composition = {
   platform: NodeJS.Platform;
   activeTools: string[];
   selected: FragmentSelection[];
+  consideredCount: number;
   truncated: boolean;
   injectedChars: number;
 };
@@ -130,20 +131,34 @@ async function loadFragment(relativePath: string): Promise<string | undefined> {
   }
 }
 
+function formatCompositionSummary(composition: Composition): string[] {
+  return [
+    `cwd: ${composition.cwd}`,
+    `platform: ${composition.platform}`,
+    `active tools: ${composition.activeTools.join(", ") || "(none)"}`,
+    `fragments considered: ${composition.consideredCount}`,
+    `fragments injected: ${composition.selected.length}`,
+    `prompt chars injected: ${composition.injectedChars}`,
+    `truncated: ${composition.truncated ? "yes" : "no"}`,
+  ];
+}
+
 async function composeRuntimePrompt(cwd: string, platform: NodeJS.Platform, activeTools: string[]): Promise<{
   text: string;
   composition: Composition;
 }> {
-  const selections = collectSelections(cwd, platform, activeTools);
+  const considered = collectSelections(cwd, platform, activeTools);
+  const selected: FragmentSelection[] = [];
   const blocks: string[] = [];
+
   let currentChars = 0;
   let truncated = false;
 
-  for (const selection of selections) {
-    const fragment = await loadFragment(selection.relativePath);
+  for (const candidate of considered) {
+    const fragment = await loadFragment(candidate.relativePath);
     if (!fragment) continue;
 
-    const block = `### ${selection.relativePath}\n${fragment}`;
+    const block = `### ${candidate.relativePath}\n${fragment}`;
     const nextChars = currentChars + block.length;
 
     if (nextChars > MAX_INJECTED_CHARS) {
@@ -152,6 +167,7 @@ async function composeRuntimePrompt(cwd: string, platform: NodeJS.Platform, acti
     }
 
     blocks.push(block);
+    selected.push(candidate);
     currentChars = nextChars;
   }
 
@@ -169,7 +185,8 @@ async function composeRuntimePrompt(cwd: string, platform: NodeJS.Platform, acti
       cwd,
       platform,
       activeTools,
-      selected: selections,
+      selected,
+      consideredCount: considered.length,
       truncated,
       injectedChars: currentChars,
     },
@@ -179,10 +196,45 @@ async function composeRuntimePrompt(cwd: string, platform: NodeJS.Platform, acti
 export default function promptComposer(pi: ExtensionAPI) {
   let lastComposition: Composition | null = null;
 
+  pi.registerCommand("prompt-debug", {
+    description: "Show active prompt-composer fragments for the current repo/tool mode",
+    handler: async (args, ctx) => {
+      if (!ctx.hasUI) return;
+      if (!lastComposition) {
+        ctx.ui.notify("prompt-composer: no composition has been generated yet in this session.", "warning");
+        return;
+      }
+
+      const showFull = (args ?? "").trim().toLowerCase() === "full";
+      const lines = ["prompt-composer", ...formatCompositionSummary(lastComposition), "", "selected fragments:"];
+
+      if (lastComposition.selected.length === 0) {
+        lines.push("- (none)");
+      } else {
+        for (const selection of lastComposition.selected) {
+          lines.push(`- ${selection.relativePath}: ${selection.reason}`);
+          if (showFull) {
+            const content = FRAGMENT_CACHE.get(selection.relativePath) ?? "(not loaded)";
+            lines.push(`  ${content.replace(/\n/g, "\n  ")}`);
+          }
+        }
+      }
+
+      ctx.ui.notify(lines.join("\n"), "info");
+    },
+  });
+
   pi.on("before_agent_start", async (event, ctx) => {
     const activeTools = pi.getActiveTools();
     const result = await composeRuntimePrompt(ctx.cwd, process.platform, activeTools);
     lastComposition = result.composition;
+
+    if (ctx.hasUI) {
+      ctx.ui.setStatus(
+        "prompt-composer",
+        `prompt: ${result.composition.selected.length}/${result.composition.consideredCount} fragments`
+      );
+    }
 
     if (!result.text) {
       return;
@@ -191,15 +243,5 @@ export default function promptComposer(pi: ExtensionAPI) {
     return {
       systemPrompt: `${event.systemPrompt}\n\n${result.text}`,
     };
-  });
-
-  pi.on("session_start", async (_event, ctx) => {
-    if (!ctx.hasUI) return;
-    if (!lastComposition) return;
-
-    ctx.ui.setStatus(
-      "prompt-composer",
-      `prompt-composer: ${lastComposition.selected.length} fragments (${lastComposition.injectedChars} chars)`
-    );
   });
 }
