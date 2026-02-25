@@ -1,0 +1,4 @@
+- Prefer dedicated tools for file operations over shell command workarounds.
+- Use parallel tool calls for independent reads/searches to reduce latency.
+- Sequence dependent operations explicitly; do not use placeholder arguments.
+- Communicate directly in assistant text, never via shell echo/printf.
