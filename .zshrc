@@ -54,15 +54,6 @@ if command -v shadowenv &> /dev/null; then
     eval "$(shadowenv init zsh)"
 fi
 
-# chruby
-if [[ -n "${HOMEBREW_PREFIX:-}" ]] && [[ -f "$HOMEBREW_PREFIX/opt/chruby/share/chruby/chruby.sh" ]]; then
-    source "$HOMEBREW_PREFIX/opt/chruby/share/chruby/chruby.sh"
-    source "$HOMEBREW_PREFIX/opt/chruby/share/chruby/auto.sh"
-elif [[ -f "$HOME/.nix-profile/share/chruby/chruby.sh" ]]; then
-    source "$HOME/.nix-profile/share/chruby/chruby.sh"
-    source "$HOME/.nix-profile/share/chruby/auto.sh"
-fi
-
 # 🧑‍💻 NVM Configuration
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -89,8 +80,6 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 [[ -d "/usr/local/sbin" ]] && export PATH="/usr/local/sbin:$PATH"
 
 # [[ -x /opt/homebrew/bin/brew ]] && eval $(/opt/homebrew/bin/brew shellenv)
-
-[[ -f /opt/dev/sh/chruby/chruby.sh ]] && { type chruby >/dev/null 2>&1 || chruby () { source /opt/dev/sh/chruby/chruby.sh; chruby "$@"; } }
 
 [ -f /opt/dev/dev.sh ] && source /opt/dev/dev.sh
 

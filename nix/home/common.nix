@@ -61,7 +61,6 @@ in
     pair-review
 
     # Development tools
-    chruby
     nodejs
     python3
     python3Packages.pip
