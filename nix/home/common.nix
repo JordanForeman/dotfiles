@@ -1,7 +1,15 @@
 { config, pkgs, lib, sqlit, ... }:
 
 let
-  pair-review = import ../pkgs/pair-review.nix { inherit pkgs; };
+  pair-review-unwrapped = import ../pkgs/pair-review.nix { inherit pkgs; };
+
+  # Wrapper that runs pair-review with mise's node@22 to fix native module ABI compatibility
+  # The Nix-built better-sqlite3 native module was compiled against Node 22, but mise's
+  # default node (24.x) has an incompatible V8 ABI. This wrapper ensures the spawned
+  # child processes also use Node 22.
+  pair-review = pkgs.writeShellScriptBin "pair-review" ''
+    exec ${pkgs.mise}/bin/mise exec node@22 -- ${pair-review-unwrapped}/bin/pair-review "$@"
+  '';
 in
 {
   imports = [
@@ -50,7 +58,7 @@ in
     # SQL TUI
     sqlit
 
-    # AI code review  
+    mise
     pair-review
 
     # Development tools
