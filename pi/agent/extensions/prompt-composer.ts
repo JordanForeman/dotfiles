@@ -73,8 +73,19 @@ function detectOsFragment(platform: NodeJS.Platform): FragmentSelection | undefi
 
 function detectReadOnlyMode(activeTools: string[]): boolean {
   if (activeTools.length === 0) return false;
-  const names = new Set(activeTools);
-  return !names.has("edit") && !names.has("write");
+
+  const names = new Set(activeTools.map((tool) => tool.trim().toLowerCase()));
+  const hasBash = names.has("bash");
+  const hasEdit = names.has("edit");
+  const hasWrite = names.has("write");
+
+  // Some custom toolsets may expose narrow mutation tools (e.g. git, git-ops, git_commit)
+  // without edit/write/bash. Treat those as non-read-only to avoid misleading guidance.
+  const hasGitMutator = Array.from(names).some((name) =>
+    /^(git|git[-_:].+|.*[-_:]git)$/.test(name)
+  );
+
+  return !hasBash && !hasEdit && !hasWrite && !hasGitMutator;
 }
 
 function collectSelections(cwd: string, platform: NodeJS.Platform, activeTools: string[]): FragmentSelection[] {

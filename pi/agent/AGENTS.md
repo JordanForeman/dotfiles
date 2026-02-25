@@ -17,8 +17,11 @@ These are global instructions for Pi sessions on my machines.
 
 ## Subagent delegation
 
+- You have specialized subagents available; use them proactively whenever a task or sub-task aligns with a subagent's specialization.
+- For large or multi-phase requests, break the work down and consider ad-hoc orchestration (sequential and/or parallel) so each facet is delegated to the best-fit specialist.
+- Prefer direct execution only for small, straightforward work where delegation overhead would not improve quality or speed.
+- Always include a short `relation` explaining how each delegated task supports the parent goal.
 - When asked to perform **git operations** (e.g. commit, stage, branch, rebase, push), delegate to the `git-ops` subagent via the `subagent` tool.
-- Include a short `relation` explaining what git outcome the parent task needs.
 - If the request involves destructive git actions, require explicit confirmation from the user before proceeding.
 
 ## Output preferences

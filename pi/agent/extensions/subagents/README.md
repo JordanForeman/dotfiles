@@ -10,6 +10,7 @@ Claude Code-style delegated subagents for Pi.
   - parallel
   - chain (serial)
   - orchestration (serial stages + parallel tasks per stage)
+- Runtime prompt catalog injection: each turn appends a compact list of discoverable subagents (name, source, description, tags) so the parent agent has ambient awareness of available specialists
 - `/subagents` command: list/show/paths/scaffold for subagents + orchestration configs
 - Runtime TypeBox validation for orchestration JSON configs (shape + limits)
 - XState-backed orchestration lifecycle state machine (explicit stage start/progress/complete/fail transitions)
@@ -53,6 +54,11 @@ tags: logs,debugging
 
 System prompt for the subagent.
 ```
+
+Notes:
+- `tools` is an execution allowlist, not just metadata. The extension forwards it to the spawned subagent via `pi --tools ...`.
+- Unknown tool names are not usable unless a matching tool is actually registered in that subagent session.
+- If a subagent needs git mutations and only `bash` is available, keep `bash` for now or provide a dedicated custom git tool first.
 
 ## Orchestration config locations
 

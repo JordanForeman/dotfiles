@@ -291,3 +291,9 @@ Project-local subagents (in `.pi/agent/subagents/`) coexist with user-level suba
 - Periodically test orchestrations with real PRs
 - Validate that triage correctly identifies applicable reviewers
 - Ensure self-filtering works across all scenarios
+- Run tool/profile heuristic checks to catch prompt-composer interaction drift:
+  ```bash
+  node pi/agent/subagents/scripts/lint-tool-heuristics.mjs
+  # strict mode (non-zero exit on warnings)
+  node pi/agent/subagents/scripts/lint-tool-heuristics.mjs --strict
+  ```

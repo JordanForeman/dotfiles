@@ -29,6 +29,7 @@ const MAX_ORCHESTRATION_STAGES = ORCHESTRATION_LIMITS.maxStages;
 const COLLAPSED_ITEM_COUNT = 8;
 const ACTIVE_WIDGET_KEY = "subagents-active";
 const ACTIVE_STATUS_KEY = "subagents";
+const CATALOG_STATUS_KEY = "subagents-catalog";
 
 // Lazy-load keyHint to avoid theme initialization errors at import time
 let cachedExpandHint: string | null = null;
@@ -135,6 +136,56 @@ type DisplayItem =
   | { type: "toolCall"; name: string; args: Record<string, unknown> };
 
 const activeWorkflows = new Map<string, WorkflowStatus>();
+const MAX_PROMPT_SUBAGENT_ENTRIES = 24;
+const MAX_PROMPT_SUBAGENT_CHARS = 4000;
+
+function composeSubagentCatalogPrompt(cwd: string): {
+  text: string;
+  count: number;
+  truncated: boolean;
+} {
+  const discovery = discoverSubagents(cwd, "both");
+  const subagents = discovery.subagents;
+
+  if (subagents.length === 0) {
+    return { text: "", count: 0, truncated: false };
+  }
+
+  const lines: string[] = [
+    "## Available subagents (runtime discovery)",
+    "",
+    "Use these specialists proactively when tasks align. For full metadata or freshest diagnostics, call `subagent_list`.",
+    "",
+  ];
+
+  let added = 0;
+  let truncated = false;
+
+  for (const item of subagents) {
+    const tags = item.tags?.length ? ` tags:${item.tags.join(",")}` : "";
+    const line = `- ${item.name} (${item.source}) — ${item.description}${tags}`;
+
+    const nextText = [...lines, line].join("\n");
+    if (nextText.length > MAX_PROMPT_SUBAGENT_CHARS || added >= MAX_PROMPT_SUBAGENT_ENTRIES) {
+      truncated = true;
+      break;
+    }
+
+    lines.push(line);
+    added += 1;
+  }
+
+  if (truncated) {
+    lines.push("");
+    lines.push("_Additional subagents are available but omitted for prompt-size control. Use `subagent_list` to see all._");
+  }
+
+  return {
+    text: lines.join("\n"),
+    count: added,
+    truncated,
+  };
+}
 
 function formatTokens(count: number): string {
   if (count < 1000) return count.toString();
@@ -1015,11 +1066,27 @@ function getSubagentCommandCompletions(prefix: string): AutocompleteItem[] | nul
 }
 
 export default function subagentsExtension(pi: ExtensionAPI) {
+  pi.on("before_agent_start", async (event, ctx) => {
+    const catalog = composeSubagentCatalogPrompt(ctx.cwd);
+
+    if (ctx.hasUI) {
+      const suffix = catalog.truncated ? "+" : "";
+      ctx.ui.setStatus(CATALOG_STATUS_KEY, `subagents: ${catalog.count}${suffix}`);
+    }
+
+    if (!catalog.text) return;
+
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n${catalog.text}`,
+    };
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     activeWorkflows.clear();
     if (ctx.hasUI) {
       ctx.ui.setWidget(ACTIVE_WIDGET_KEY, undefined);
       ctx.ui.setStatus(ACTIVE_STATUS_KEY, undefined);
+      ctx.ui.setStatus(CATALOG_STATUS_KEY, undefined);
     }
   });
 
@@ -1028,6 +1095,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     if (ctx.hasUI) {
       ctx.ui.setWidget(ACTIVE_WIDGET_KEY, undefined);
       ctx.ui.setStatus(ACTIVE_STATUS_KEY, undefined);
+      ctx.ui.setStatus(CATALOG_STATUS_KEY, undefined);
     }
   });
 
