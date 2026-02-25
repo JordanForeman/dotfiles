@@ -1,4 +1,4 @@
-{ config, pkgs, sqlit, ... }:
+{ config, pkgs, lib, sqlit, ... }:
 
 {
   # Shell configuration - use personal zshrc directly
@@ -72,22 +72,7 @@
     recursive = true;
   };
 
-  home.file.".pi/agent/extensions/subagents" = {
-    source = ../../pi/agent/extensions/subagents;
-    recursive = true;
-  };
-
-  home.file.".pi/agent/extensions/theme-switcher.ts" = {
-    source = ../../pi/agent/extensions/theme-switcher.ts;
-  };
-
-  home.file.".pi/agent/extensions/safety-gate.ts" = {
-    source = ../../pi/agent/extensions/safety-gate.ts;
-  };
-
-  home.file.".pi/agent/extensions/pi-ask.ts" = {
-    source = ../../pi/agent/extensions/pi-ask.ts;
-  };
+  # Note: Pi extensions are managed in pi.nix (imported via common.nix)
 
   # Pi settings template (can be customized locally)
   home.file.".pi/agent/settings-template.json" = {

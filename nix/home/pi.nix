@@ -16,64 +16,57 @@
       "${config.home.homeDirectory}/.pi/agent/settings.json"
   '';
 
-  # Ensure extension-local npm dependencies are installed for Pi extensions that
-  # import from node_modules (e.g. subagents extension using xstate).
+  # Copy subagents extension and install npm dependencies
+  # We copy instead of symlink because node_modules must resolve from the actual directory
   home.activation.piExtensionDeps = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    srcDir="${../../pi/agent/extensions/subagents}"
     extDir="${config.home.homeDirectory}/.pi/agent/extensions/subagents"
+    stateDir="${config.xdg.stateHome}/pi/extensions"
+    hashFile="$stateDir/subagents-source.sha256"
+
+    # Create extension directory
+    mkdir -p "$extDir"
+    mkdir -p "$stateDir"
+
+    # Check if source has changed
+    currentHash="$(${pkgs.findutils}/bin/find "$srcDir" -type f ! -name 'node_modules' ! -path '*/node_modules/*' -exec ${pkgs.coreutils}/bin/sha256sum {} \; | ${pkgs.coreutils}/bin/sort | ${pkgs.coreutils}/bin/sha256sum | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+    
+    previousHash=""
+    if [ -f "$hashFile" ]; then
+      previousHash="$(${pkgs.coreutils}/bin/cat "$hashFile")"
+    fi
+
+    if [ "$currentHash" != "$previousHash" ]; then
+      echo "→ Copying Pi subagents extension"
+      ${pkgs.rsync}/bin/rsync -a --delete --exclude='node_modules' "$srcDir/" "$extDir/"
+      printf "%s" "$currentHash" > "$hashFile"
+    fi
+
+    # Install dependencies if needed
     pkgJson="$extDir/package.json"
     lockJson="$extDir/package-lock.json"
-    stateDir="${config.xdg.stateHome}/pi/extensions"
-    hashFile="$stateDir/subagents-deps.sha256"
-
-    if [ -f "$pkgJson" ]; then
-      mkdir -p "$stateDir"
-
-      if [ -f "$lockJson" ]; then
-        currentHash="$(${pkgs.coreutils}/bin/sha256sum "$pkgJson" "$lockJson" | ${pkgs.coreutils}/bin/sha256sum | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
-      else
-        currentHash="$(${pkgs.coreutils}/bin/sha256sum "$pkgJson" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
-      fi
-
-      previousHash=""
-      if [ -f "$hashFile" ]; then
-        previousHash="$(${pkgs.coreutils}/bin/cat "$hashFile")"
-      fi
-
-      if [ "$currentHash" != "$previousHash" ] || [ ! -d "$extDir/node_modules/xstate" ]; then
-        echo "→ Installing Pi subagents extension dependencies"
-
-        installOk=0
+    
+    if [ -f "$pkgJson" ] && [ ! -d "$extDir/node_modules/xstate" ]; then
+      echo "→ Installing Pi subagents extension dependencies"
+      (
+        cd "$extDir"
         if [ -f "$lockJson" ]; then
-          if (
-            cd "$extDir"
-            ${pkgs.nodejs}/bin/npm ci --no-audit --no-fund --omit=dev
-          ); then
-            installOk=1
-          fi
+          ${pkgs.nodejs}/bin/npm ci --no-audit --no-fund --omit=dev
         else
-          if (
-            cd "$extDir"
-            ${pkgs.nodejs}/bin/npm install --no-audit --no-fund --omit=dev --package-lock=false
-          ); then
-            installOk=1
-          fi
+          ${pkgs.nodejs}/bin/npm install --no-audit --no-fund --omit=dev
         fi
-
-        if [ "$installOk" -eq 1 ]; then
-          printf "%s" "$currentHash" > "$hashFile"
-        else
-          echo "⚠️  Failed to install Pi subagents extension dependencies; continuing activation"
-        fi
-      fi
+      ) || echo "⚠️  Failed to install Pi subagents extension dependencies; continuing activation"
     fi
   '';
 
   home.file.".pi/agent/keybindings.json".source = ../../pi/agent/keybindings.json;
 
-  home.file.".pi/agent/extensions" = {
-    source = ../../pi/agent/extensions;
-    recursive = true;
-  };
+  # Note: subagents extension is copied via piExtensionDeps activation (not symlinked)
+  # because it has npm dependencies that need to resolve from the actual directory.
+  # Other extensions are symlinked normally.
+  home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
+  home.file.".pi/agent/extensions/safety-gate.ts".source = ../../pi/agent/extensions/safety-gate.ts;
+  home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
 
   home.file.".pi/agent/prompts" = {
     source = ../../pi/agent/prompts;
