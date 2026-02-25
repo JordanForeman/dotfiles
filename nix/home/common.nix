@@ -13,6 +13,9 @@ in
   # nixpkgs is pinned via flake; avoid release-mismatch warnings.
   home.enableNixpkgsReleaseCheck = false;
 
+  # Suppress the home-manager news pager during switch.
+  news.display = "silent";
+
   xdg.enable = true;
 
   home.file.".gitconfig".source = ../../.gitconfig;
