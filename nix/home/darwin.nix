@@ -1,6 +1,10 @@
 { config, pkgs, ... }:
 
 {
+  imports = [
+    ../modules/git.nix
+  ];
+
   home.file.".zshrc".source = ../../.zshrc;
 
   xdg.configFile."ghostty" = {

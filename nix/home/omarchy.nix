@@ -1,6 +1,10 @@
 { config, pkgs, lib, ... }:
 
 {
+  imports = [
+    ../modules/git.nix
+  ];
+
   # Intentionally do not manage Omarchy-owned desktop config (Hyprland, Waybar,
   # mako, walker, etc.). This host module is for user-level dev tooling only.
 

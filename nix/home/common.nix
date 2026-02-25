@@ -26,7 +26,6 @@ in
 
   xdg.enable = true;
 
-  home.file.".gitconfig".source = ../../.gitconfig;
   home.file.".aliases".source = ../../.aliases;
 
   xdg.configFile."zellij" = {

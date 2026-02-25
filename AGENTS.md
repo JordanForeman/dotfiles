@@ -17,7 +17,7 @@ dotfiles/
 ├── install.sh                # Environment-aware bootstrap script
 ├── nix/
 │   ├── home/                 # Home Manager modules (common + machine-specific)
-│   ├── modules/              # Shared Nix modules
+│   ├── modules/              # Shared Nix modules (git, etc.)
 │   ├── machines/             # Machine docs/overrides
 │   └── pkgs/                 # Custom packages
 ├── .config/                  # App configs (nvim, ghostty, zellij, etc.)
@@ -70,6 +70,14 @@ For tools like Neovim, Ghostty, Zellij, Git, Zsh:
 - Edit files in this repo directly (`.config/...`, `.gitconfig`, `.zshrc`, etc.)
 - Keep app-specific conventions intact
 - If behavior depends on Home Manager wiring, verify related `nix/home/*.nix` module references
+
+**Git Config Special Case:**
+- `.gitconfig` in repo is the base config
+- Personal Macs: symlinked (read-only) via `nix/modules/git.nix`
+- Work Mac: copied (writable) to allow local modifications
+  - Base kept at `~/.gitconfig.dotfiles-base` for drift detection
+  - See `nix/machines/shopify-macbook.md` for sync workflows
+  - Machine-specific overrides go in `~/.gitconfig.local` (gitignored)
 
 ### 3) Pi configuration changes (subset of this repo)
 

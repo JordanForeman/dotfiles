@@ -14,8 +14,10 @@ lazy-lock.json
 # Extension runtime dependencies
 pi/agent/extensions/subagents/node_modules/
 
-# Machine-specific shell configuration
+# Machine-specific configuration
 .zshrc.local
+.gitconfig.local
+.gitconfig.dotfiles-base
 
 # Apple
 .DS_Store

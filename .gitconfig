@@ -2,6 +2,10 @@
     name = Jordan Foreman
     email = hello@jordanforeman.com
 
+# Machine-specific overrides (work email, signing keys, etc.)
+[include]
+    path = ~/.gitconfig.local
+
 [core]
     pager = delta
 

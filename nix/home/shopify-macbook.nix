@@ -40,8 +40,11 @@
     # Let Shopify's tools set their own vars, we'll only set personal ones
   };
 
-  # Git configuration
-  home.file.".gitconfig".source = ../../.gitconfig;
+  # Git configuration - seeded from dotfiles but kept writable
+  home.activation.reconcileGitConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    ${pkgs.bash}/bin/bash ${../scripts/reconcile-gitconfig.sh} ${../../.gitconfig}
+  '';
+
   home.file.".aliases".source = ../../.aliases;
 
   # Zellij configuration
