@@ -14,6 +14,7 @@ pi/agent/
 ├── extensions/         # Shareable Pi extensions
 │   ├── subagents/     # Robust subagents extension
 │   ├── theme-switcher.ts
+│   ├── ui-modern.ts   # Default modern session UI (enhanced footer indicators)
 │   └── safety-gate.ts
 ├── themes/             # Pi UI themes
 ├── settings.json       # Base settings template
