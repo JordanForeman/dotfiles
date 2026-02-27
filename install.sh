@@ -35,10 +35,9 @@ echo "📋 Detected platform: $PLATFORM ($SYSTEM)"
 
 # Platform-specific setup
 if [[ "$PLATFORM" == "darwin" ]]; then
-  # Detect if this is a work-provisioned machine with existing Nix management
-  # Look for evidence of existing profile management beyond standard Nix
-  if [[ -d /Users/jordan/.local/state/nix/profiles ]] && \
-     [[ $(find /Users/jordan/.local/state -maxdepth 1 -type d 2>/dev/null | wc -l) -gt 2 ]]; then
+  # Detect if this is a Shopify work-provisioned machine
+  # Check for Shopify dev tooling which is publicly documented
+  if [[ -f /opt/dev/dev.sh ]] || [[ -d /opt/dev ]]; then
     echo "🏢 Detected work-provisioned machine"
     echo "   Using Home Manager only (preserving existing system management)"
     echo ""
@@ -73,7 +72,20 @@ EOF
 
     # Personal machine: Use nix-darwin
     INSTALL_MODE="nix-darwin"
-    CONFIG="${DOTFILES_DARWIN_CONFIG:-personal-macbook}"
+
+    # Auto-detect configuration based on hostname, with override option
+    if [[ -n "${DOTFILES_DARWIN_CONFIG:-}" ]]; then
+      CONFIG="$DOTFILES_DARWIN_CONFIG"
+    else
+      # Try hostname-based detection first
+      HOSTNAME_SHORT=$(hostname -s)
+      # Check if configuration exists by listing all configs
+      if nix eval --json .#darwinConfigurations --apply 'x: builtins.attrNames x' 2>/dev/null | grep -q "\"$HOSTNAME_SHORT\""; then
+        CONFIG="$HOSTNAME_SHORT"
+      else
+        CONFIG="personal-macbook"
+      fi
+    fi
 
     # Check if darwin-rebuild is available
     if ! command -v darwin-rebuild &>/dev/null; then

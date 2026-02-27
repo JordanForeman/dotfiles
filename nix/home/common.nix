@@ -83,4 +83,9 @@ in
     zsh-autocomplete
     zsh-autosuggestions
   ];
+
+  # Pi coding agent (installed globally via npm)
+  home.activation.installPi = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    ${pkgs.bash}/bin/bash ${../scripts/ensure-pi.sh} ${pkgs.nodejs}/bin/npm
+  '';
 }
