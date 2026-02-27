@@ -6,15 +6,18 @@ This directory contains project-local subagents for the dotfiles repository. The
 
 ```
 .pi/agent/subagents/
-├── README.md                      # This file
-├── orchestrations/                # Orchestration configurations
-│   ├── README.md                 # Orchestration documentation
-│   └── pr-review.json            # PR review orchestration
-├── pr-triage.md                  # PR analysis and triage
-├── design-reviewer.md            # Architecture and design review
-├── rails-reviewer.md             # Rails/backend code review
-├── frontend-reviewer.md          # React/TypeScript frontend review
-└── testing-reviewer.md           # Test quality and coverage review
+├── README.md                              # This file
+├── orchestrations/                        # Orchestration configurations
+│   ├── README.md                         # Orchestration documentation
+│   ├── feature-dev-pipeline.json         # End-to-end feature delivery pipeline
+│   ├── pr-review.json                    # PR review orchestration
+│   └── team-creation-pipeline.json       # Reusable team capability creation pipeline
+├── team-creator.md                        # Team capability authoring specialist
+├── pr-triage.md                          # PR analysis and triage
+├── design-reviewer.md                    # Architecture and design review
+├── rails-reviewer.md                     # Rails/backend code review
+├── frontend-reviewer.md                  # React/TypeScript frontend review
+└── testing-reviewer.md                   # Test quality and coverage review
 ```
 
 ## Subagents
@@ -94,6 +97,20 @@ pi subagent frontend-reviewer --task "Review frontend changes in PR #1234"
 pi subagent testing-reviewer --task "Review test quality in PR #1234"
 ```
 
+### Team Creator (`team-creator.md`)
+**Purpose**: Creates reusable team capabilities from high-level descriptions
+
+**Focus Areas**:
+- Designing subagent + orchestration topology for a new team capability
+- Creating/maintaining reusable orchestration JSON configs
+- Updating team-related docs with invocation patterns
+- Ensuring new team artifacts are minimal, consistent, and reusable
+
+**Usage**:
+```bash
+pi subagent team-creator --task "Create a reusable team capability for triaging and implementing GitHub issues"
+```
+
 ## Orchestrations
 
 ### PR Review Orchestration (`orchestrations/pr-review.json`)
@@ -106,6 +123,19 @@ pi subagent testing-reviewer --task "Review test quality in PR #1234"
 **Usage**:
 ```bash
 pi subagent --orchestration pr-review --task "Review PR #1234"
+```
+
+### Team Creation Orchestration (`orchestrations/team-creation-pipeline.json`)
+**Purpose**: Designs and creates reusable team capabilities from a high-level objective
+
+**Workflow**:
+1. **Design Stage**: Planner + Architect produce artifact plan and team architecture
+2. **Create Stage**: `team-creator` authors subagents/orchestrations/docs
+3. **Review Stage**: Reviewer validates quality and safety
+
+**Usage**:
+```bash
+pi subagent --orchestration team-creation-pipeline --task "Create a reusable team capability for X"
 ```
 
 See `orchestrations/README.md` for detailed documentation.
@@ -152,6 +182,41 @@ pi subagent --orchestration <orchestration-name> --task "<task-description>"
 
 # Example
 pi subagent --orchestration pr-review --task "Review PR #1234"
+```
+
+### Teams Invocation (Parallel Orchestration Runs)
+```json
+{
+  "teams": [
+    {
+      "name": "api",
+      "orchestrationConfig": "feature-dev-pipeline",
+      "task": "Implement API changes"
+    },
+    {
+      "name": "ui",
+      "orchestrationConfig": "feature-dev-pipeline",
+      "task": "Implement UI changes"
+    }
+  ],
+  "teamsConcurrency": 2,
+  "teamsFailureMode": "continue"
+}
+```
+
+Each team runs in its own git worktree. Use `/teams list` and `/teams show <team-id|name>` to inspect status.
+
+Quick launcher commands:
+```bash
+/subagents team feature-dev-pipeline api::"Implement API changes" || ui::"Implement UI changes"
+/subagents team team-creation-pipeline meta-team::"Create a reusable team capability for docs automation"
+```
+
+Team manager helpers:
+```bash
+/teams do Implement issue #123 with parallel API/UI tracks
+/teams create "A reusable generalist team for feature delivery"
+/teams create "A team that creates teams"
 ```
 
 ### Delegation from Parent Agent

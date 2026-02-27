@@ -2,3 +2,5 @@
 - Read before editing and preserve existing local style/conventions.
 - Avoid speculative refactors or opportunistic cleanups unless explicitly requested.
 - When uncertain, investigate first; do not guess.
+- For independent multi-track work, prefer teams mode so each orchestration runs in its own worktree and can be tracked independently.
+- Interpret natural-language requests to "make a team" as explicit delegation guidance (not as mere suggestion).

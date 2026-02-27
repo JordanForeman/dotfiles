@@ -7,7 +7,7 @@ This directory contains the **shareable** base configuration for Pi agents acros
 ```
 pi/agent/
 ├── subagents/          # Subagent definitions (converted from agents/)
-│   ├── *.md           # 19 subagent specifications
+│   ├── *.md           # Subagent specifications (runtime-discovered)
 │   └── orchestrations/ # Orchestration configs
 ├── prompts/            # General development prompts (9 generic + 5 work-specific prompts)
 ├── skills/             # Reusable skills (1 generic + 4 work-specific skills)
@@ -118,7 +118,7 @@ Edit files directly in `~/.pi/agent/`:
 
 The dotfiles use the **robust subagents extension** (not the outdated local one).
 
-### Available Subagents (19 total):
+### Available Subagents (discovered at runtime):
 
 **From dotfiles base:**
 - `builder` - Build and test orchestration
@@ -126,6 +126,7 @@ The dotfiles use the **robust subagents extension** (not the outdated local one)
 - `log-viewer` - Log analysis
 - `planner` - Implementation planning
 - `reviewer` - Code review
+- `team-creator` - Creates reusable team capabilities (subagents + orchestrations + docs)
 
 **Converted from local:**
 - `architect` - Solution design
@@ -147,6 +148,27 @@ The dotfiles use the **robust subagents extension** (not the outdated local one)
 
 # Run orchestration
 /subagents orchestrate feature-dev-pipeline "Build user authentication"
+
+# Run multiple teams in parallel (each team gets its own git worktree)
+/subagents team feature-dev-pipeline api::"Build API changes" || ui::"Build UI changes"
+
+# Ask Pi to run an objective using teams mode
+/teams do Build issue #123 with separate API and UI tracks
+# (shorthand)
+/teams Build issue #123 with separate API and UI tracks
+
+# Inspect team status
+/teams list
+
+# Build reusable team capability artifacts directly
+/subagents orchestrate team-creation-pipeline "Create a reusable team capability for docs automation"
+
+# Launch a team-creation team in teams mode
+/subagents team team-creation-pipeline team-factory::"Create a reusable team capability for docs automation"
+
+# Create a reusable team capability via manager helper
+/teams create "A generalist team that can take a feature request from planning to PR"
+/teams create "A team that creates teams"
 ```
 
 ## 🆘 Troubleshooting

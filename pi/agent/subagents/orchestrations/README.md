@@ -1,8 +1,13 @@
-# PR Review Orchestration
+# Orchestration Configurations
 
 ## Overview
 
-This directory contains orchestration configurations for coordinating multiple specialized subagents to perform comprehensive PR reviews.
+This directory contains orchestration configurations for coordinating specialized subagents.
+
+Current configs:
+- `feature-dev-pipeline.json` — end-to-end feature delivery (plan/build/review/git)
+- `pr-review.json` — multi-dimensional PR review
+- `team-creation-pipeline.json` — creates reusable team capabilities
 
 ## `pr-review.json`
 
@@ -59,6 +64,80 @@ pi subagent --orchestration pr-review --task "Review the current branch against 
 
 # Review a specific diff
 pi subagent --orchestration pr-review --task "Review this diff: $(git diff main)"
+```
+
+### Teams Mode (Parallel Orchestration Runs)
+
+You can run multiple orchestrations in parallel using `teams` (each team gets its own git worktree):
+
+```json
+{
+  "teams": [
+    {
+      "name": "pr-1234",
+      "orchestrationConfig": "pr-review",
+      "task": "Review PR #1234"
+    },
+    {
+      "name": "pr-1235",
+      "orchestrationConfig": "pr-review",
+      "task": "Review PR #1235"
+    }
+  ],
+  "teamsConcurrency": 2,
+  "teamsFailureMode": "continue"
+}
+```
+
+Use `/teams list` and `/teams show <team-id|name>` in the main session to inspect status and drill into one team.
+
+Quick launcher command:
+```bash
+/subagents team pr-review pr-1234::"Review PR #1234" || pr-1235::"Review PR #1235"
+```
+
+Manager helpers:
+```bash
+/teams do Review PR #1234 and related PR #1235 with separate teams
+/teams create "A reusable PR review team for our repo workflow"
+```
+
+## `team-creation-pipeline.json`
+
+A three-stage orchestration for creating reusable team capabilities:
+
+1. **Design** (parallel): `planner` + `architect`
+2. **Create**: `team-creator`
+3. **Review**: `reviewer`
+
+Basic usage:
+```bash
+pi subagent --orchestration team-creation-pipeline --task "Create a reusable team capability for onboarding automation"
+```
+
+Teams-mode launcher example:
+```bash
+/subagents team team-creation-pipeline team-factory::"Create a reusable team capability for onboarding automation"
+```
+
+Equivalent raw teams payload:
+```json
+{
+  "teams": [
+    {
+      "name": "team-factory",
+      "orchestrationConfig": "team-creation-pipeline",
+      "task": "Create a reusable team capability for onboarding automation"
+    }
+  ],
+  "teamsConcurrency": 1,
+  "teamsFailureMode": "continue"
+}
+```
+
+High-level helper:
+```bash
+/teams create "A team that creates teams"
 ```
 
 ### Usage from Parent Agent

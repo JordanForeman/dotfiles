@@ -19,6 +19,11 @@ These are global instructions for Pi sessions on my machines.
 
 - You have specialized subagents available; use them proactively whenever a task or sub-task aligns with a subagent's specialization.
 - For large or multi-phase requests, break the work down and consider ad-hoc orchestration (sequential and/or parallel) so each facet is delegated to the best-fit specialist.
+- For parallel feature tracks, prefer **teams mode** (`subagent` tool `teams` input): each team runs an orchestration in its own git worktree.
+- Treat the main session as a team manager: keep team status visible and use `/teams list|show|cancel|cleanup` for inspection and control.
+- Prefer `/subagents team <config> <team::task> [|| ...]` for quick team launch, or raw `subagent` JSON when custom team settings are needed.
+- If the user asks in natural language to "make a team" or "do this with a team", treat that as an instruction to use teams mode even without slash-command syntax (the subagents extension also injects a teams-intent hint automatically).
+- Use `/teams do <objective>` (or `/teams <objective>` shorthand) to queue team execution and `/teams create <description>` to create reusable team artifacts.
 - Prefer direct execution only for small, straightforward work where delegation overhead would not improve quality or speed.
 - Always include a short `relation` explaining how each delegated task supports the parent goal.
 - When asked to perform **git operations** (e.g. commit, stage, branch, rebase, push), delegate to the `git-ops` subagent via the `subagent` tool.

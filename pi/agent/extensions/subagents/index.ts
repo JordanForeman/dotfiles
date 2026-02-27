@@ -4,7 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import type { Message } from "@mariozechner/pi-ai";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { getMarkdownTheme, keyHint, type ExtensionAPI, type ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import {
+  getMarkdownTheme,
+  keyHint,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
+  type ExtensionContext,
+} from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
@@ -26,6 +32,9 @@ import {
 const MAX_PARALLEL_TASKS = ORCHESTRATION_LIMITS.maxParallelTasks;
 const MAX_CONCURRENCY = ORCHESTRATION_LIMITS.maxConcurrency;
 const MAX_ORCHESTRATION_STAGES = ORCHESTRATION_LIMITS.maxStages;
+const MAX_TEAMS = 8;
+const MAX_TEAM_CONCURRENCY = 4;
+const MAX_TEAM_RECORDS = 64;
 const COLLAPSED_ITEM_COUNT = 8;
 const ACTIVE_WIDGET_KEY = "subagents-active";
 const ACTIVE_STATUS_KEY = "subagents";
@@ -76,6 +85,7 @@ interface SubagentRunResult {
   task: string;
   relation?: string;
   step?: number;
+  teamId?: string;
   exitCode: number;
   messages: Message[];
   stderr: string;
@@ -86,7 +96,9 @@ interface SubagentRunResult {
   errorMessage?: string;
 }
 
-type ExecutionMode = "single" | "parallel" | "chain" | "orchestration";
+type ExecutionMode = "single" | "parallel" | "chain" | "orchestration" | "teams";
+type TeamFailureMode = "continue" | "fail-fast" | "cancel-running";
+type TeamStatus = "queued" | "provisioning" | "running" | "succeeded" | "failed" | "cancelled" | "skipped";
 
 interface OrchestrationStageSummary {
   index: number;
@@ -95,6 +107,33 @@ interface OrchestrationStageSummary {
   done: number;
   running: number;
   failed: number;
+}
+
+interface TeamSummary {
+  id: string;
+  name: string;
+  orchestrationConfig: string;
+  status: TeamStatus;
+  task: string;
+  relation?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+  worktreeBaseRef?: string;
+  error?: string;
+  stages?: OrchestrationStageSummary[];
+  currentStage?: number;
+  preview?: string;
+  updatedAt: number;
+}
+
+interface TeamRecord extends TeamSummary {
+  workflowId: string;
+  configSource: "user" | "project";
+  configFilePath: string;
+  repoRoot?: string;
+  results: SubagentRunResult[];
+  startedAt?: number;
+  endedAt?: number;
 }
 
 interface SubagentToolDetails {
@@ -111,6 +150,9 @@ interface SubagentToolDetails {
     source: "user" | "project";
     filePath: string;
   };
+  teams?: TeamSummary[];
+  teamsFailureMode?: TeamFailureMode;
+  teamsConcurrency?: number;
 }
 
 interface RuntimeOrchestrationStage {
@@ -125,6 +167,17 @@ interface RuntimeOrchestrationStage {
   concurrency?: number;
 }
 
+interface ResolvedTeamInvocation {
+  id: string;
+  name: string;
+  task: string;
+  relation?: string;
+  baseRef?: string;
+  worktreeParent?: string;
+  config: OrchestrationConfigDefinition;
+  stages: RuntimeOrchestrationStage[];
+}
+
 interface WorkflowStatus {
   title: string;
   lines: string[];
@@ -136,6 +189,8 @@ type DisplayItem =
   | { type: "toolCall"; name: string; args: Record<string, unknown> };
 
 const activeWorkflows = new Map<string, WorkflowStatus>();
+const teamRecords = new Map<string, TeamRecord>();
+const activeTeamControllers = new Map<string, AbortController>();
 const MAX_PROMPT_SUBAGENT_ENTRIES = 24;
 const MAX_PROMPT_SUBAGENT_CHARS = 4000;
 
@@ -155,6 +210,7 @@ function composeSubagentCatalogPrompt(cwd: string): {
     "## Available subagents (runtime discovery)",
     "",
     "Use these specialists proactively when tasks align. For full metadata or freshest diagnostics, call `subagent_list`.",
+    "For multi-track execution, use `subagent` teams mode (parallel orchestration runs with isolated worktrees).",
     "",
   ];
 
@@ -333,6 +389,444 @@ function summarizeOrchestrationStage(
   };
 }
 
+function buildTeamPreview(results: SubagentRunResult[]): string | undefined {
+  for (let i = results.length - 1; i >= 0; i -= 1) {
+    const output = getFinalOutput(results[i].messages).trim();
+    if (!output) continue;
+    return output.length > 140 ? `${output.slice(0, 140)}...` : output;
+  }
+
+  return undefined;
+}
+
+function summarizeTeam(record: TeamRecord): TeamSummary {
+  return {
+    id: record.id,
+    name: record.name,
+    orchestrationConfig: record.orchestrationConfig,
+    status: record.status,
+    task: record.task,
+    relation: record.relation,
+    worktreePath: record.worktreePath,
+    worktreeBranch: record.worktreeBranch,
+    worktreeBaseRef: record.worktreeBaseRef,
+    error: record.error,
+    stages: record.stages,
+    currentStage: record.currentStage,
+    preview: buildTeamPreview(record.results),
+    updatedAt: record.updatedAt,
+  };
+}
+
+function upsertTeamRecord(record: TeamRecord): void {
+  const next: TeamRecord = {
+    ...record,
+    updatedAt: Date.now(),
+    stages: record.stages ? record.stages.map((stage) => ({ ...stage })) : undefined,
+    results: record.results.map((result) => ({ ...result })),
+  };
+
+  teamRecords.set(next.id, next);
+
+  if (teamRecords.size <= MAX_TEAM_RECORDS) return;
+
+  const stale = Array.from(teamRecords.values())
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(MAX_TEAM_RECORDS);
+
+  for (const item of stale) {
+    if (activeTeamControllers.has(item.id)) continue;
+    teamRecords.delete(item.id);
+  }
+}
+
+function findTeamRecord(target: string): TeamRecord | undefined {
+  const normalized = target.trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  const exactId = teamRecords.get(target.trim());
+  if (exactId) return exactId;
+
+  return Array.from(teamRecords.values())
+    .filter((item) => item.name.toLowerCase() === normalized || item.id.toLowerCase() === normalized)
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+}
+
+function buildTeamRelation(baseRelation: string | undefined, team: ResolvedTeamInvocation): string {
+  const sections = [
+    baseRelation?.trim(),
+    `Team objective:\n${team.task.trim()}`,
+    team.relation?.trim(),
+    team.config.relation?.trim(),
+  ].filter((item): item is string => Boolean(item));
+
+  return sections.join("\n\n");
+}
+
+function resolveTeamTaskCwd(teamWorktreePath: string, taskCwd: string | undefined): string {
+  if (!taskCwd?.trim()) return teamWorktreePath;
+
+  const resolved = path.isAbsolute(taskCwd)
+    ? path.resolve(taskCwd)
+    : path.resolve(teamWorktreePath, taskCwd.trim());
+
+  if (resolved === teamWorktreePath) return resolved;
+  if (resolved.startsWith(`${teamWorktreePath}${path.sep}`)) return resolved;
+  return teamWorktreePath;
+}
+
+interface TeamWorktreeProvision {
+  repoRoot: string;
+  worktreePath: string;
+  branch: string;
+  baseRef: string;
+}
+
+interface TeamGitProcessResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+function slugifyTeamName(input: string): string {
+  return (
+    input
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/--+/g, "-")
+      .replace(/^-+|-+$/g, "") || "team"
+  );
+}
+
+async function runGitCommand(args: string[], cwd: string, signal?: AbortSignal): Promise<TeamGitProcessResult> {
+  return new Promise<TeamGitProcessResult>((resolve, reject) => {
+    const proc = spawn("git", args, {
+      cwd,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let aborted = false;
+
+    proc.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    proc.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on("error", (error) => {
+      reject(error);
+    });
+
+    proc.on("close", (code) => {
+      if (aborted) {
+        reject(new Error("Git command aborted"));
+        return;
+      }
+
+      resolve({
+        code: code ?? 1,
+        stdout,
+        stderr,
+      });
+    });
+
+    if (signal) {
+      const kill = () => {
+        aborted = true;
+        proc.kill("SIGTERM");
+        setTimeout(() => {
+          if (!proc.killed) proc.kill("SIGKILL");
+        }, 3000);
+      };
+
+      if (signal.aborted) kill();
+      else signal.addEventListener("abort", kill, { once: true });
+    }
+  });
+}
+
+async function provisionTeamWorktree(params: {
+  cwd: string;
+  teamName: string;
+  teamId: string;
+  baseRef?: string;
+  worktreeParent?: string;
+  signal?: AbortSignal;
+}): Promise<TeamWorktreeProvision> {
+  const rootResult = await runGitCommand(["rev-parse", "--show-toplevel"], params.cwd, params.signal);
+
+  if (rootResult.code !== 0) {
+    const message = rootResult.stderr.trim() || rootResult.stdout.trim() || "Unknown git error";
+    throw new Error(`Failed to resolve repository root: ${message}`);
+  }
+
+  const repoRoot = rootResult.stdout.trim();
+  const repoName = path.basename(repoRoot);
+  const teamSlug = slugifyTeamName(params.teamName);
+  const suffix = params.teamId.replace(/[^a-zA-Z0-9-]+/g, "").slice(-10) || Date.now().toString(36);
+
+  const worktreeRoot = params.worktreeParent?.trim()
+    ? path.resolve(params.cwd, params.worktreeParent.trim())
+    : path.join(path.dirname(repoRoot), ".pi-teams", repoName);
+
+  await fs.promises.mkdir(worktreeRoot, { recursive: true });
+
+  const worktreePath = path.join(worktreeRoot, `${teamSlug}-${suffix}`);
+  if (fs.existsSync(worktreePath)) {
+    throw new Error(`Team worktree path already exists: ${worktreePath}`);
+  }
+
+  const branch = `team/${teamSlug}-${suffix}`;
+  const baseRef = params.baseRef?.trim() || "HEAD";
+
+  const addResult = await runGitCommand(
+    ["worktree", "add", "-b", branch, worktreePath, baseRef],
+    repoRoot,
+    params.signal
+  );
+
+  if (addResult.code !== 0) {
+    const message = addResult.stderr.trim() || addResult.stdout.trim() || "Unknown git worktree error";
+    throw new Error(`Failed to create team worktree: ${message}`);
+  }
+
+  return {
+    repoRoot,
+    worktreePath,
+    branch,
+    baseRef,
+  };
+}
+
+async function removeTeamWorktree(params: {
+  repoRoot: string;
+  worktreePath: string;
+  signal?: AbortSignal;
+}): Promise<void> {
+  if (!params.worktreePath) return;
+  if (!fs.existsSync(params.worktreePath)) return;
+
+  const result = await runGitCommand(
+    ["worktree", "remove", "--force", params.worktreePath],
+    params.repoRoot,
+    params.signal
+  );
+
+  if (result.code !== 0) {
+    const message = result.stderr.trim() || result.stdout.trim() || "Unknown git worktree remove error";
+    throw new Error(`Failed to remove team worktree: ${message}`);
+  }
+}
+
+type OrchestrationExecutionSnapshot = {
+  stages: OrchestrationStageSummary[];
+  currentStage: number;
+  results: SubagentRunResult[];
+};
+
+type OrchestrationExecutionResult =
+  | {
+      ok: true;
+      snapshot: OrchestrationExecutionSnapshot;
+      finalOutputs: string[];
+      previousOutput: string;
+    }
+  | {
+      ok: false;
+      snapshot: OrchestrationExecutionSnapshot;
+      error: string;
+      previousOutput: string;
+    };
+
+async function executeOrchestrationRun(args: {
+  baseCwd: string;
+  subagents: SubagentDefinition[];
+  orchestrationStages: RuntimeOrchestrationStage[];
+  relation?: string;
+  orchestrationConfig?: OrchestrationConfigDefinition;
+  signal?: AbortSignal;
+  parentModel?: { provider: string; modelId: string };
+  resolveTaskCwd?: (taskCwd: string | undefined) => string;
+  onProgress?: (message: string, snapshot: OrchestrationExecutionSnapshot) => void;
+}): Promise<OrchestrationExecutionResult> {
+  const stageStates = args.orchestrationStages.map((stage, index) => ({
+    index,
+    label: stage.label?.trim() || `stage-${index + 1}`,
+    total: stage.tasks.length,
+    results: [] as SubagentRunResult[],
+  }));
+
+  const orchestrationState = createOrchestrationStateEngine(
+    stageStates.map((stage) => ({
+      label: stage.label,
+      total: stage.total,
+    }))
+  );
+
+  const resolveTaskCwd =
+    args.resolveTaskCwd ??
+    ((taskCwd: string | undefined) => taskCwd ?? args.orchestrationConfig?.cwd ?? args.baseCwd);
+
+  orchestrationState.start();
+  orchestrationState.send({ type: "START" });
+
+  const getSnapshot = (): OrchestrationExecutionSnapshot => {
+    const snapshot = orchestrationState.getState();
+    return {
+      stages: snapshot.stages,
+      currentStage: snapshot.currentStage,
+      results: stageStates.flatMap((stage) => stage.results),
+    };
+  };
+
+  try {
+    let previousOutput = "";
+
+    for (let stageIndex = 0; stageIndex < args.orchestrationStages.length; stageIndex += 1) {
+      const stage = args.orchestrationStages[stageIndex];
+      const stageRelation = stage.relation ?? args.relation;
+      const stageCount = args.orchestrationStages.length;
+      const concurrency = Math.max(1, Math.min(stage.concurrency ?? MAX_CONCURRENCY, MAX_CONCURRENCY));
+
+      stageStates[stageIndex].results = stage.tasks.map((item) => ({
+        subagent: item.subagent,
+        source: "unknown",
+        task: item.task.replace(/\{previous\}/g, previousOutput),
+        relation: item.relation ?? stageRelation,
+        step: stageIndex + 1,
+        exitCode: -1,
+        messages: [],
+        stderr: "",
+        usage: makeUsage(),
+      }));
+
+      orchestrationState.send({ type: "STAGE_STARTED", stageIndex });
+      const initialSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
+      orchestrationState.send({
+        type: "STAGE_PROGRESS",
+        stageIndex,
+        done: initialSummary.done,
+        running: initialSummary.running,
+        failed: initialSummary.failed,
+      });
+
+      args.onProgress?.(
+        `Orchestration stage ${stageIndex + 1}/${stageCount} running (${stageStates[stageIndex].label})`,
+        getSnapshot()
+      );
+
+      const stageResults = await mapWithConcurrencyLimit(stage.tasks, concurrency, async (item, taskIndex) => {
+        const task = item.task.replace(/\{previous\}/g, previousOutput);
+
+        const result = await runSingleSubagent(
+          args.baseCwd,
+          args.subagents,
+          {
+            subagent: item.subagent,
+            task,
+            relation: item.relation ?? stageRelation,
+            cwd: resolveTaskCwd(item.cwd),
+            step: stageIndex + 1,
+          },
+          args.signal,
+          (partial) => {
+            stageStates[stageIndex].results[taskIndex] = partial;
+            const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
+            orchestrationState.send({
+              type: "STAGE_PROGRESS",
+              stageIndex,
+              done: stageSummary.done,
+              running: stageSummary.running,
+              failed: stageSummary.failed,
+            });
+
+            const snapshot = getSnapshot();
+            const stageProgress = snapshot.stages?.[stageIndex];
+            const progress = stageProgress
+              ? `${stageProgress.done}/${stageProgress.total} complete`
+              : `task ${taskIndex + 1}`;
+
+            args.onProgress?.(`Orchestration stage ${stageIndex + 1}/${stageCount}: ${progress}`, snapshot);
+          },
+          args.parentModel
+        );
+
+        stageStates[stageIndex].results[taskIndex] = result;
+        const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
+        orchestrationState.send({
+          type: "STAGE_PROGRESS",
+          stageIndex,
+          done: stageSummary.done,
+          running: stageSummary.running,
+          failed: stageSummary.failed,
+        });
+
+        args.onProgress?.(
+          `Orchestration stage ${stageIndex + 1}/${stageCount}: ${stageStates[stageIndex].label}`,
+          getSnapshot()
+        );
+
+        return result;
+      });
+
+      stageStates[stageIndex].results = stageResults;
+
+      const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
+      orchestrationState.send({
+        type: "STAGE_PROGRESS",
+        stageIndex,
+        done: stageSummary.done,
+        running: stageSummary.running,
+        failed: stageSummary.failed,
+      });
+
+      const failed = stageResults.find((item) => isFailed(item));
+      const successfulOutputs = stageResults
+        .filter((item) => !isFailed(item))
+        .map((item) => getFinalOutput(item.messages).trim())
+        .filter(Boolean);
+      previousOutput = successfulOutputs.join("\n\n");
+
+      if (failed) {
+        const error = failed.errorMessage || failed.stderr || getFinalOutput(failed.messages) || "(no output)";
+        orchestrationState.send({ type: "STAGE_FAILED", stageIndex, error });
+        return {
+          ok: false,
+          error,
+          snapshot: getSnapshot(),
+          previousOutput,
+        };
+      }
+
+      orchestrationState.send({
+        type: "STAGE_COMPLETED",
+        stageIndex,
+        previousOutput,
+      });
+    }
+
+    orchestrationState.send({ type: "COMPLETE" });
+    const finalOutputs = stageStates[stageStates.length - 1]?.results
+      .map((item) => getFinalOutput(item.messages).trim())
+      .filter(Boolean);
+
+    return {
+      ok: true,
+      snapshot: getSnapshot(),
+      finalOutputs: finalOutputs ?? [],
+      previousOutput,
+    };
+  } finally {
+    orchestrationState.stop();
+  }
+}
+
 function toWorkflowLines(details: SubagentToolDetails): string[] {
   if (details.mode === "single") {
     const result = details.results[0];
@@ -377,6 +871,39 @@ function toWorkflowLines(details: SubagentToolDetails): string[] {
     ];
   }
 
+  if (details.mode === "teams") {
+    const teams = details.teams ?? [];
+    if (teams.length === 0) return ["teams: starting..."];
+
+    const complete = teams.filter((team) =>
+      ["succeeded", "failed", "cancelled", "skipped"].includes(team.status)
+    ).length;
+    const running = teams.filter((team) => team.status === "running" || team.status === "provisioning").length;
+    const failed = teams.filter((team) => team.status === "failed").length;
+
+    const active = teams.find((team) => team.status === "running" || team.status === "provisioning");
+
+    const headline = `teams: ${complete}/${teams.length} complete, ${running} running`;
+    if (!active) {
+      return [headline, `status: ${failed} failed`];
+    }
+
+    if (active.status === "provisioning") {
+      return [headline, `${active.name}: provisioning worktree`];
+    }
+
+    const stages = active.stages ?? [];
+    const current = stages[Math.max(0, Math.min(active.currentStage ?? 0, stages.length - 1))];
+    if (!current) {
+      return [headline, `${active.name}: running`];
+    }
+
+    return [
+      headline,
+      `${active.name}: stage ${current.index + 1} (${current.done}/${current.total} done, ${current.running} running)`,
+    ];
+  }
+
   const running = details.results.filter((result) => result.exitCode === -1).length;
   const done = details.results.filter((result) => result.exitCode !== -1).length;
   return [`${details.mode}: ${done}/${details.results.length} done, ${running} running`];
@@ -392,7 +919,7 @@ function renderActiveWidget(ctx: { hasUI: boolean; ui: ExtensionCommandContext["
   }
 
   const workflows = Array.from(activeWorkflows.values()).sort((a, b) => b.updatedAt - a.updatedAt);
-  const lines: string[] = ["Subagent orchestration"];
+  const lines: string[] = ["Subagent workflows"];
 
   for (const workflow of workflows.slice(0, 3)) {
     lines.push(`• ${workflow.title}`);
@@ -408,7 +935,7 @@ function renderActiveWidget(ctx: { hasUI: boolean; ui: ExtensionCommandContext["
   ctx.ui.setWidget(ACTIVE_WIDGET_KEY, lines);
   ctx.ui.setStatus(
     ACTIVE_STATUS_KEY,
-    `⚙ ${activeWorkflows.size} orchestration workflow${activeWorkflows.size === 1 ? "" : "s"}`
+    `⚙ ${activeWorkflows.size} delegation workflow${activeWorkflows.size === 1 ? "" : "s"}`
   );
 }
 
@@ -425,6 +952,13 @@ function updateWorkflow(
 function clearWorkflow(ctx: { hasUI: boolean; ui: ExtensionCommandContext["ui"] }, workflowId: string): void {
   activeWorkflows.delete(workflowId);
   renderActiveWidget(ctx);
+}
+
+function abortActiveTeams(): void {
+  for (const controller of activeTeamControllers.values()) {
+    controller.abort();
+  }
+  activeTeamControllers.clear();
 }
 
 function writePromptToTempFile(subagentName: string, prompt: string): { dir: string; filePath: string } {
@@ -718,6 +1252,28 @@ const OrchestrationStageSchema = Type.Object({
   ),
 });
 
+const TeamFailureModeSchema = StringEnum(["continue", "fail-fast", "cancel-running"] as const, {
+  default: "continue",
+  description: "How teams behave when one team fails",
+});
+
+const TeamItemSchema = Type.Object({
+  name: Type.String({ description: "Team name shown in status widgets and /teams" }),
+  orchestrationConfig: Type.String({ description: "Named orchestration config for this team" }),
+  task: Type.String({ description: "Concrete objective delegated to this team" }),
+  relation: Type.Optional(Type.String({ description: "Additional relation context for this team" })),
+  baseRef: Type.Optional(Type.String({ description: "Git ref to branch from when creating the team worktree" })),
+  worktreeParent: Type.Optional(
+    Type.String({ description: "Optional directory under which the team worktree is created" })
+  ),
+  orchestrationConfigScope: Type.Optional(
+    StringEnum(["user", "project", "both"] as const, {
+      default: "both",
+      description: "Scope used to resolve this team's orchestration config",
+    })
+  ),
+});
+
 const SubagentListParams = Type.Object({
   scope: Type.Optional(ScopeSchema),
   includePrompt: Type.Optional(
@@ -753,6 +1309,22 @@ const SubagentInvokeParams = Type.Object({
       description: "Scope for orchestration config discovery",
     })
   ),
+  teams: Type.Optional(
+    Type.Array(TeamItemSchema, {
+      minItems: 1,
+      maxItems: MAX_TEAMS,
+      description: "Run multiple named teams (each team runs an orchestration config in its own worktree)",
+    })
+  ),
+  teamsConcurrency: Type.Optional(
+    Type.Integer({
+      minimum: 1,
+      maximum: MAX_TEAM_CONCURRENCY,
+      default: 2,
+      description: `Number of teams to run concurrently (1-${MAX_TEAM_CONCURRENCY})`,
+    })
+  ),
+  teamsFailureMode: Type.Optional(TeamFailureModeSchema),
   scope: Type.Optional(ScopeSchema),
   confirmProjectSubagents: Type.Optional(
     Type.Boolean({
@@ -829,10 +1401,12 @@ function usageCommandText(): string {
     "  /subagents paths",
     "  /subagents scaffold <name> [description]",
     "  /subagents orchestrate <config-name> <task/relation>",
+    "  /subagents team <config-name> <team::task> [|| team::task ...]",
     "  /subagents orchestration list [user|project|both]",
     "  /subagents orchestration show <name> [user|project|both]",
     "  /subagents orchestration paths",
     "  /subagents orchestration scaffold <name> [description]",
+    "  /teams list|show|cancel|cleanup|do|create",
   ].join("\n");
 }
 
@@ -952,11 +1526,13 @@ const COMMAND_SUBCOMMANDS = [
   "paths",
   "scaffold",
   "orchestrate",
+  "team",
   "orchestration",
   "orchestrations",
   "help",
 ];
 const ORCHESTRATION_COMMAND_SUBCOMMANDS = ["list", "show", "paths", "scaffold", "help"];
+const TEAM_COMMAND_SUBCOMMANDS = ["list", "show", "cancel", "cleanup", "do", "create", "help"];
 const SCOPE_VALUES: SubagentScope[] = ["user", "project", "both"];
 
 type CompletionInput = {
@@ -1011,6 +1587,45 @@ function discoverSubagentNamesForCompletion(): string[] {
   }
 }
 
+function discoverTeamIdentifiersForCompletion(includeAll = false): string[] {
+  const records = Array.from(teamRecords.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+  const names = new Set<string>();
+
+  for (const record of records) {
+    names.add(record.id);
+    names.add(record.name);
+  }
+
+  if (includeAll) names.add("all");
+  return Array.from(names);
+}
+
+function getTeamsCommandCompletions(prefix: string): AutocompleteItem[] | null {
+  const input = parseCompletionInput(prefix);
+
+  if (input.currentIndex === 0) {
+    return makeCompletionItems(input, TEAM_COMMAND_SUBCOMMANDS);
+  }
+
+  const command = (input.tokens[0] ?? "").toLowerCase();
+
+  if (command === "show" || command === "cancel") {
+    if (input.currentIndex === 1) {
+      return makeCompletionItems(input, discoverTeamIdentifiersForCompletion(false));
+    }
+    return null;
+  }
+
+  if (command === "cleanup") {
+    if (input.currentIndex === 1) {
+      return makeCompletionItems(input, discoverTeamIdentifiersForCompletion(true));
+    }
+    return null;
+  }
+
+  return null;
+}
+
 function getSubagentCommandCompletions(prefix: string): AutocompleteItem[] | null {
   const input = parseCompletionInput(prefix);
   const rootCommand = (input.tokens[0] ?? "").toLowerCase();
@@ -1033,6 +1648,13 @@ function getSubagentCommandCompletions(prefix: string): AutocompleteItem[] | nul
   }
 
   if (rootCommand === "orchestrate") {
+    if (input.currentIndex === 1) {
+      return makeCompletionItems(input, discoverOrchestrationNamesForCompletion());
+    }
+    return null;
+  }
+
+  if (rootCommand === "team") {
     if (input.currentIndex === 1) {
       return makeCompletionItems(input, discoverOrchestrationNamesForCompletion());
     }
@@ -1066,6 +1688,36 @@ function getSubagentCommandCompletions(prefix: string): AutocompleteItem[] | nul
 }
 
 export default function subagentsExtension(pi: ExtensionAPI) {
+  pi.on("input", async (event) => {
+    const text = event.text.trim();
+    if (!text || text.startsWith("/")) return { action: "continue" as const };
+    if (event.source === "extension") return { action: "continue" as const };
+
+    const lower = text.toLowerCase();
+    const requestsTeamMode =
+      lower.includes("make a team") ||
+      lower.includes("create a team") ||
+      lower.includes("team for yourself") ||
+      lower.includes("with a team") ||
+      lower.includes("use a team") ||
+      lower.includes("spin up a team");
+
+    if (!requestsTeamMode) return { action: "continue" as const };
+
+    const suffix = [
+      "",
+      "[team execution intent detected]",
+      "Use subagent teams mode for this request.",
+      "Ensure each team runs in a dedicated git worktree and keep /teams list|show|cancel|cleanup as the control surface.",
+    ].join("\n");
+
+    return {
+      action: "transform" as const,
+      text: `${event.text.trim()}${suffix}`,
+      images: event.images,
+    };
+  });
+
   pi.on("before_agent_start", async (event, ctx) => {
     const catalog = composeSubagentCatalogPrompt(ctx.cwd);
 
@@ -1083,6 +1735,19 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     activeWorkflows.clear();
+    teamRecords.clear();
+    abortActiveTeams();
+    if (ctx.hasUI) {
+      ctx.ui.setWidget(ACTIVE_WIDGET_KEY, undefined);
+      ctx.ui.setStatus(ACTIVE_STATUS_KEY, undefined);
+      ctx.ui.setStatus(CATALOG_STATUS_KEY, undefined);
+    }
+  });
+
+  pi.on("session_switch", async (_event, ctx) => {
+    activeWorkflows.clear();
+    teamRecords.clear();
+    abortActiveTeams();
     if (ctx.hasUI) {
       ctx.ui.setWidget(ACTIVE_WIDGET_KEY, undefined);
       ctx.ui.setStatus(ACTIVE_STATUS_KEY, undefined);
@@ -1092,6 +1757,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     activeWorkflows.clear();
+    teamRecords.clear();
+    abortActiveTeams();
     if (ctx.hasUI) {
       ctx.ui.setWidget(ACTIVE_WIDGET_KEY, undefined);
       ctx.ui.setStatus(ACTIVE_STATUS_KEY, undefined);
@@ -1100,7 +1767,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("subagents", {
-    description: "Manage subagent definitions and orchestration configs",
+    description: "Manage subagent definitions, orchestration configs, and team launch shortcuts",
     getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => getSubagentCommandCompletions(prefix),
     handler: async (args, ctx) => {
       if (!ctx.hasUI) return;
@@ -1162,6 +1829,118 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         }
 
         ctx.ui.notify(`Queued orchestration: ${resolved.config.name}`, "info");
+        return;
+      }
+
+      if (command === "team") {
+        if (!rest[0]) {
+          ctx.ui.notify("Usage: /subagents team <config-name> <team::task> [|| team::task ...]", "warning");
+          return;
+        }
+
+        const configName = rest[0];
+        const resolved = resolveOrchestrationConfigByName(ctx.cwd, "both", configName);
+
+        if (!resolved.config) {
+          const diagnostics =
+            resolved.diagnostics.length > 0
+              ? `\nDiagnostics:\n${resolved.diagnostics.map((item) => `- ${item}`).join("\n")}`
+              : "";
+          ctx.ui.notify(`${resolved.error || "Failed to resolve orchestration config."}${diagnostics}`, "error");
+          return;
+        }
+
+        const afterCommand = input.slice(commandRaw.length).trim();
+        const specsRaw = afterCommand.slice(configName.length).trim();
+
+        if (!specsRaw) {
+          ctx.ui.notify(
+            "Provide team specs after the config name. Example: /subagents team feature-dev-pipeline api::Build API || ui::Build UI",
+            "warning"
+          );
+          return;
+        }
+
+        const segments = specsRaw
+          .split(/\s*\|\|\s*/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+
+        if (segments.length === 0) {
+          ctx.ui.notify("No team specs were parsed.", "warning");
+          return;
+        }
+
+        const names = new Set<string>();
+        const teams: Array<{ name: string; orchestrationConfig: string; task: string }> = [];
+
+        for (const [index, segment] of segments.entries()) {
+          const marker = segment.indexOf("::");
+          const fallbackName = `team-${index + 1}`;
+
+          let name = fallbackName;
+          let task = segment;
+
+          if (marker >= 0) {
+            const parsedName = segment.slice(0, marker).trim();
+            const parsedTask = segment.slice(marker + 2).trim();
+            if (parsedName) name = parsedName;
+            task = parsedTask;
+          }
+
+          const stripWrappingQuotes = (value: string): string => {
+            const trimmed = value.trim();
+            if (trimmed.length < 2) return trimmed;
+            if (trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed.slice(1, -1).trim();
+            if (trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed.slice(1, -1).trim();
+            return trimmed;
+          };
+
+          task = stripWrappingQuotes(task);
+          if (!task) {
+            ctx.ui.notify(`Team spec ${index + 1} is missing a task.`, "warning");
+            return;
+          }
+
+          let unique = name;
+          let suffix = 2;
+          while (names.has(unique.toLowerCase())) {
+            unique = `${name}-${suffix}`;
+            suffix += 1;
+          }
+          names.add(unique.toLowerCase());
+
+          teams.push({
+            name: unique,
+            orchestrationConfig: resolved.config.name,
+            task,
+          });
+        }
+
+        const payload = {
+          teams,
+          teamsConcurrency: Math.max(1, Math.min(2, teams.length)),
+          teamsFailureMode: "continue",
+          relation:
+            resolved.config.relation ||
+            `Execute orchestration config \"${resolved.config.name}\" across ${teams.length} teams for the parent objective.`,
+        };
+
+        const request = [
+          "Invoke the subagent tool now with this exact JSON:",
+          "```json",
+          JSON.stringify(payload, null, 2),
+          "```",
+          "Do not modify the JSON.",
+        ].join("\n");
+
+        if (ctx.isIdle()) {
+          pi.sendUserMessage(request);
+        } else {
+          pi.sendUserMessage(request, { deliverAs: "followUp" });
+        }
+
+        ctx.ui.notify(`Queued ${teams.length} teams using orchestration: ${resolved.config.name}`, "info");
         return;
       }
 
@@ -1363,6 +2142,285 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("teams", {
+    description: "Inspect, run, and create team orchestration workflows",
+    getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => getTeamsCommandCompletions(prefix),
+    handler: async (args, ctx) => {
+      if (!ctx.hasUI) return;
+
+      const usage = [
+        "Usage:",
+        "  /teams list",
+        "  /teams show <team-id|name>",
+        "  /teams cancel <team-id|name>",
+        "  /teams cleanup <team-id|name|all>",
+        "  /teams do <objective>",
+        "  /teams create <reusable-team-description>",
+      ].join("\n");
+
+      const rawInput = (args ?? "").trim();
+      const tokens = rawInput.split(/\s+/).filter(Boolean);
+      const commandToken = (tokens[0] ?? "list").toLowerCase();
+      const knownCommands = new Set(["help", "list", "show", "cancel", "cleanup", "do", "create"]);
+      const implicitDo = Boolean(rawInput) && !knownCommands.has(commandToken);
+      const command = implicitDo ? "do" : commandToken;
+
+      const queuePlannerMessage = (text: string, infoMessage: string) => {
+        if (ctx.isIdle()) {
+          pi.sendUserMessage(text);
+        } else {
+          pi.sendUserMessage(text, { deliverAs: "followUp" });
+        }
+        ctx.ui.notify(infoMessage, "info");
+      };
+
+      const stripWrappingQuotes = (value: string): string => {
+        const trimmed = value.trim();
+        if (trimmed.length < 2) return trimmed;
+        if (trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed.slice(1, -1).trim();
+        if (trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed.slice(1, -1).trim();
+        return trimmed;
+      };
+
+      if (command === "help") {
+        ctx.ui.notify(usage, "info");
+        return;
+      }
+
+      if (command === "do") {
+        const objective = stripWrappingQuotes(implicitDo ? rawInput : tokens.slice(1).join(" ").trim());
+        if (!objective) {
+          ctx.ui.notify("Usage: /teams do <objective>", "warning");
+          return;
+        }
+
+        const request = [
+          "You are coordinating this objective using teams mode.",
+          "",
+          "Objective:",
+          objective,
+          "",
+          "Execution requirements:",
+          "1) Prefer reusing existing subagents and orchestration configs when viable.",
+          "2) If needed, create or update reusable definitions in:",
+          "   - pi/agent/subagents/*.md",
+          "   - pi/agent/subagents/orchestrations/*.json",
+          "3) Launch one or more teams via the `subagent` tool `teams` mode.",
+          "4) Keep team naming clear and relation context explicit.",
+          "5) Treat `/teams` command as the control surface for status/cancel/cleanup.",
+          "6) Keep diffs focused and update relevant docs when adding reusable artifacts.",
+          "",
+          "Start by producing a brief execution plan, then execute.",
+        ].join("\n");
+
+        queuePlannerMessage(request, implicitDo ? "Queued team execution from natural-language objective." : "Queued team execution objective.");
+        return;
+      }
+
+      if (command === "create") {
+        const description = stripWrappingQuotes(tokens.slice(1).join(" ").trim());
+        if (!description) {
+          ctx.ui.notify("Usage: /teams create <reusable-team-description>", "warning");
+          return;
+        }
+
+        const request = [
+          "Design and create a reusable team capability for this description:",
+          description,
+          "",
+          "Requirements:",
+          "1) Create or update any missing reusable subagents in pi/agent/subagents/*.md.",
+          "2) Create at least one reusable orchestration config in pi/agent/subagents/orchestrations/*.json.",
+          "3) Ensure the resulting setup is callable in future sessions (document invocation examples).",
+          "4) Update relevant docs (subagents/orchestrations README and pi/README where appropriate).",
+          "5) Keep naming consistent and avoid unnecessary refactors.",
+          "",
+          "After creating artifacts, summarize exact invocation patterns (including a /subagents team example).",
+        ].join("\n");
+
+        queuePlannerMessage(request, "Queued reusable team creation request.");
+        return;
+      }
+
+      if (command === "list") {
+        const records = Array.from(teamRecords.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+        if (records.length === 0) {
+          ctx.ui.notify("No teams have been launched in this session.", "info");
+          return;
+        }
+
+        const statusIcon = (status: TeamStatus) => {
+          if (status === "succeeded") return "✓";
+          if (status === "failed") return "✗";
+          if (status === "cancelled") return "◐";
+          if (status === "skipped") return "⏭";
+          if (status === "provisioning" || status === "running") return "⏳";
+          return "○";
+        };
+
+        const lines = records.map((record) => {
+          const stages = record.stages ?? [];
+          const active =
+            record.status === "running" && stages.length > 0
+              ? ` stage:${Math.min((record.currentStage ?? 0) + 1, stages.length)}/${stages.length}`
+              : "";
+          return `${statusIcon(record.status)} ${record.id} · ${record.name} · ${record.orchestrationConfig} · ${record.status}${active}`;
+        });
+
+        ctx.ui.notify(lines.join("\n"), "info");
+        return;
+      }
+
+      if (command === "show") {
+        const target = tokens.slice(1).join(" ").trim();
+        if (!target) {
+          ctx.ui.notify("Usage: /teams show <team-id|name>", "warning");
+          return;
+        }
+
+        const record = findTeamRecord(target);
+        if (!record) {
+          ctx.ui.notify(`Team not found: ${target}`, "warning");
+          return;
+        }
+
+        const lines = [
+          `${record.name} (${record.id})`,
+          `status: ${record.status}`,
+          `workflow: ${record.workflowId}`,
+          `orchestration: ${record.orchestrationConfig} (${record.configSource})`,
+          `config path: ${record.configFilePath}`,
+          `task: ${record.task}`,
+          record.relation ? `relation: ${record.relation}` : "",
+          record.worktreePath ? `worktree: ${record.worktreePath}` : "worktree: (none)",
+          record.worktreeBranch ? `branch: ${record.worktreeBranch}` : "",
+          record.worktreeBaseRef ? `base ref: ${record.worktreeBaseRef}` : "",
+          record.error ? `error: ${record.error}` : "",
+          `subagent runs: ${record.results.length}`,
+        ].filter(Boolean);
+
+        if (record.stages?.length) {
+          lines.push("stages:");
+          for (const stage of record.stages) {
+            lines.push(
+              `  ${stage.index + 1}. ${stage.label} (${stage.done}/${stage.total} done, ${stage.running} running, ${stage.failed} failed)`
+            );
+          }
+        }
+
+        if (record.results.length > 0) {
+          lines.push("recent outputs:");
+          const bySubagent = record.results.slice(-4);
+          for (const result of bySubagent) {
+            const output = getFinalOutput(result.messages).trim();
+            const preview = output ? output.split("\n")[0] : "(no output)";
+            const status = isFailed(result) ? "failed" : result.exitCode === -1 ? "running" : "ok";
+            lines.push(`  - ${result.subagent} [${status}] ${preview}`);
+          }
+        }
+
+        ctx.ui.notify(lines.join("\n"), "info");
+        return;
+      }
+
+      if (command === "cancel") {
+        const target = tokens.slice(1).join(" ").trim();
+        if (!target) {
+          ctx.ui.notify("Usage: /teams cancel <team-id|name>", "warning");
+          return;
+        }
+
+        const record = findTeamRecord(target);
+        if (!record) {
+          ctx.ui.notify(`Team not found: ${target}`, "warning");
+          return;
+        }
+
+        const controller = activeTeamControllers.get(record.id);
+        if (!controller) {
+          ctx.ui.notify(`Team is not currently running: ${record.id}`, "warning");
+          return;
+        }
+
+        controller.abort();
+        ctx.ui.notify(`Cancellation requested for team ${record.id}`, "info");
+        return;
+      }
+
+      if (command === "cleanup") {
+        const target = tokens.slice(1).join(" ").trim();
+        if (!target) {
+          ctx.ui.notify("Usage: /teams cleanup <team-id|name|all>", "warning");
+          return;
+        }
+
+        const candidates =
+          target.toLowerCase() === "all"
+            ? Array.from(teamRecords.values())
+            : [findTeamRecord(target)].filter((item): item is TeamRecord => Boolean(item));
+
+        if (candidates.length === 0) {
+          ctx.ui.notify(`No team records matched: ${target}`, "warning");
+          return;
+        }
+
+        const cleanupTargets = candidates.filter(
+          (item) =>
+            item.worktreePath &&
+            item.repoRoot &&
+            item.status !== "running" &&
+            item.status !== "provisioning" &&
+            !activeTeamControllers.has(item.id)
+        );
+
+        if (cleanupTargets.length === 0) {
+          ctx.ui.notify("No completed teams with removable worktrees were found.", "warning");
+          return;
+        }
+
+        const confirmed = await ctx.ui.confirm(
+          "Remove team worktrees?",
+          cleanupTargets.map((item) => `- ${item.id}: ${item.worktreePath}`).join("\n")
+        );
+
+        if (!confirmed) {
+          ctx.ui.notify("Cleanup cancelled.", "info");
+          return;
+        }
+
+        let removed = 0;
+        const failures: string[] = [];
+
+        for (const item of cleanupTargets) {
+          try {
+            await removeTeamWorktree({
+              repoRoot: item.repoRoot!,
+              worktreePath: item.worktreePath!,
+            });
+            item.worktreePath = undefined;
+            item.worktreeBranch = undefined;
+            item.worktreeBaseRef = undefined;
+            upsertTeamRecord(item);
+            removed += 1;
+          } catch (error) {
+            failures.push(`${item.id}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+
+        const lines = [`Removed ${removed}/${cleanupTargets.length} worktrees.`];
+        if (failures.length > 0) {
+          lines.push("Failures:");
+          lines.push(...failures.map((item) => `- ${item}`));
+        }
+
+        ctx.ui.notify(lines.join("\n"), failures.length > 0 ? "warning" : "info");
+        return;
+      }
+
+      ctx.ui.notify(usage, "warning");
+    },
+  });
+
   pi.registerTool({
     name: "subagent_list",
     label: "Subagent List",
@@ -1463,8 +2521,9 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     label: "Subagent",
     description: [
       "Delegate work to specialized subagents loaded from ~/.pi/agent/subagents (default).",
-      "Supports single, parallel, chain, and staged orchestration modes.",
+      "Supports single, parallel, chain, staged orchestration, and multi-team orchestration modes.",
       "Orchestration can be inline or loaded from named JSON configs in ~/.pi/agent/subagents/orchestrations.",
+      "Teams mode runs multiple orchestration configs in parallel; each team is provisioned in its own git worktree.",
       "Use subagent_list first when you need to discover available subagents.",
       "Set relation to explain how delegated work maps to the parent session objective.",
     ].join(" "),
@@ -1489,6 +2548,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
       const hasInlineOrchestration = Boolean(inlineOrchestrationStages?.length);
       const hasNamedOrchestration = Boolean(params.orchestrationConfig?.trim());
+      const hasTeams = Boolean(params.teams?.length);
 
       if (hasInlineOrchestration && hasNamedOrchestration) {
         return {
@@ -1513,7 +2573,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       let orchestrationConfig: OrchestrationConfigDefinition | undefined;
       let orchestrationStages: RuntimeOrchestrationStage[] | undefined = inlineOrchestrationStages;
 
-      if (hasNamedOrchestration && params.orchestrationConfig) {
+      if (!hasTeams && hasNamedOrchestration && params.orchestrationConfig) {
         const configScope: SubagentScope = params.orchestrationConfigScope ?? "both";
         const resolved = resolveOrchestrationConfigByName(ctx.cwd, configScope, params.orchestrationConfig);
 
@@ -1540,9 +2600,85 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         orchestrationStages = normalizeOrchestrationStages(resolved.config.stages);
       }
 
-      const scope: SubagentScope = params.scope ?? orchestrationConfig?.scope ?? "user";
-      const confirmProjectSubagents =
-        params.confirmProjectSubagents ?? orchestrationConfig?.confirmProjectSubagents ?? true;
+      const resolvedTeams: ResolvedTeamInvocation[] = [];
+
+      if (hasTeams && params.teams) {
+        for (const [index, item] of params.teams.entries()) {
+          const teamName = item.name.trim();
+          if (!teamName) {
+            return {
+              content: [{ type: "text", text: `Team at index ${index} is missing a non-empty name.` }],
+              details: {
+                mode: "teams",
+                scope: params.scope ?? "user",
+                workflowId,
+                relation: params.relation,
+                projectRoot: null,
+                results: [],
+              },
+              isError: true,
+            };
+          }
+
+          const configScope: SubagentScope = item.orchestrationConfigScope ?? params.orchestrationConfigScope ?? "both";
+          const resolved = resolveOrchestrationConfigByName(ctx.cwd, configScope, item.orchestrationConfig);
+
+          if (!resolved.config) {
+            const diagnostics =
+              resolved.diagnostics.length > 0
+                ? `\nDiagnostics:\n${resolved.diagnostics.map((entry) => `- ${entry}`).join("\n")}`
+                : "";
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Team \"${teamName}\" orchestration lookup failed: ${resolved.error || "unknown error"}${diagnostics}`,
+                },
+              ],
+              details: {
+                mode: "teams",
+                scope: params.scope ?? "user",
+                workflowId,
+                relation: params.relation,
+                projectRoot: resolved.projectRoot,
+                results: [],
+              },
+              isError: true,
+            };
+          }
+
+          resolvedTeams.push({
+            id: `${workflowId}-team-${index + 1}`,
+            name: teamName,
+            task: item.task,
+            relation: item.relation,
+            baseRef: item.baseRef,
+            worktreeParent: item.worktreeParent,
+            config: resolved.config,
+            stages: normalizeOrchestrationStages(resolved.config.stages),
+          });
+        }
+      }
+
+      const mergeScopes = (items: Array<SubagentScope | undefined>): SubagentScope => {
+        const values = new Set(items.filter((item): item is SubagentScope => Boolean(item)));
+        if (values.has("both")) return "both";
+        if (values.has("user") && values.has("project")) return "both";
+        if (values.has("project")) return "project";
+        if (values.has("user")) return "user";
+        return "user";
+      };
+
+      const inferredScope = mergeScopes([
+        orchestrationConfig?.scope,
+        ...resolvedTeams.map((team) => team.config.scope),
+      ]);
+
+      const scope: SubagentScope = params.scope ?? inferredScope;
+      const inferredConfirmProjectSubagents = hasTeams
+        ? resolvedTeams.some((team) => team.config.confirmProjectSubagents ?? true)
+        : orchestrationConfig?.confirmProjectSubagents ?? true;
+      const confirmProjectSubagents = params.confirmProjectSubagents ?? inferredConfirmProjectSubagents;
       const relation = params.relation ?? orchestrationConfig?.relation;
 
       const discovery = discoverSubagents(ctx.cwd, scope);
@@ -1552,20 +2688,30 @@ export default function subagentsExtension(pi: ExtensionAPI) {
       const hasParallel = Boolean(params.tasks?.length);
       const hasChain = Boolean(params.chain?.length);
       const hasOrchestration = Boolean(orchestrationStages?.length);
-      const modeCount = Number(hasSingle) + Number(hasParallel) + Number(hasChain) + Number(hasOrchestration);
+      const hasOrchestrationInput = hasInlineOrchestration || hasNamedOrchestration || hasOrchestration;
+      const modeCount =
+        Number(hasSingle) + Number(hasParallel) + Number(hasChain) + Number(hasOrchestrationInput) + Number(hasTeams);
 
-      const mode: ExecutionMode = hasOrchestration
-        ? "orchestration"
-        : hasChain
-          ? "chain"
-          : hasParallel
-            ? "parallel"
-            : "single";
+      const mode: ExecutionMode = hasTeams
+        ? "teams"
+        : hasOrchestrationInput
+          ? "orchestration"
+          : hasChain
+            ? "chain"
+            : hasParallel
+              ? "parallel"
+              : "single";
 
       const makeDetails = (
         detailMode: ExecutionMode,
         results: SubagentRunResult[],
-        options?: { stages?: OrchestrationStageSummary[]; currentStage?: number }
+        options?: {
+          stages?: OrchestrationStageSummary[];
+          currentStage?: number;
+          teams?: TeamSummary[];
+          teamsFailureMode?: TeamFailureMode;
+          teamsConcurrency?: number;
+        }
       ): SubagentToolDetails => ({
         mode: detailMode,
         scope,
@@ -1575,6 +2721,9 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         results,
         stages: options?.stages,
         currentStage: options?.currentStage,
+        teams: options?.teams,
+        teamsFailureMode: options?.teamsFailureMode,
+        teamsConcurrency: options?.teamsConcurrency,
         orchestrationConfig: orchestrationConfig
           ? {
               name: orchestrationConfig.name,
@@ -1589,7 +2738,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           content: [
             {
               type: "text",
-              text: "Provide exactly one mode: single, tasks, chain, orchestration, or orchestrationConfig.",
+              text: "Provide exactly one mode: single, tasks, chain, orchestration, orchestrationConfig, or teams.",
             },
           ],
           details: makeDetails(mode, []),
@@ -1613,6 +2762,13 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         if (orchestrationStages) {
           for (const stage of orchestrationStages) {
             for (const item of stage.tasks) requested.add(item.subagent);
+          }
+        }
+        if (resolvedTeams.length > 0) {
+          for (const team of resolvedTeams) {
+            for (const stage of team.stages) {
+              for (const item of stage.tasks) requested.add(item.subagent);
+            }
           }
         }
 
@@ -1787,206 +2943,295 @@ export default function subagentsExtension(pi: ExtensionAPI) {
           }
 
           const title = `orchestration (${orchestrationStages.length} stages)`;
-          const stageStates = orchestrationStages.map((stage, index) => ({
-            index,
-            label: stage.label?.trim() || `stage-${index + 1}`,
-            total: stage.tasks.length,
-            results: [] as SubagentRunResult[],
-          }));
-
-          const orchestrationState = createOrchestrationStateEngine(
-            stageStates.map((stage) => ({
-              label: stage.label,
-              total: stage.total,
-            }))
-          );
-          orchestrationState.start();
-          orchestrationState.send({ type: "START" });
-
-          const buildDetails = () => {
-            const snapshot = orchestrationState.getState();
-            return makeDetails("orchestration", stageStates.flatMap((stage) => stage.results), {
+          const pushOrchestrationProgress = (message: string, snapshot: OrchestrationExecutionSnapshot) => {
+            const details = makeDetails("orchestration", snapshot.results, {
               stages: snapshot.stages,
               currentStage: snapshot.currentStage,
             });
+            updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
+            onUpdate?.({
+              content: [{ type: "text", text: message }],
+              details,
+            });
           };
 
-          try {
-            updateWorkflow(ctx, workflowId, title, toWorkflowLines(buildDetails()));
-            let previousOutput = "";
+          updateWorkflow(ctx, workflowId, title, toWorkflowLines(makeDetails("orchestration", [])));
 
-            for (let stageIndex = 0; stageIndex < orchestrationStages.length; stageIndex++) {
-              const stage = orchestrationStages[stageIndex];
-              const stageRelation = stage.relation ?? relation;
-              const stageCount = orchestrationStages.length;
-              const concurrency = Math.max(1, Math.min(stage.concurrency ?? MAX_CONCURRENCY, MAX_CONCURRENCY));
+          const orchestrationRun = await executeOrchestrationRun({
+            baseCwd: ctx.cwd,
+            subagents,
+            orchestrationStages,
+            relation,
+            orchestrationConfig,
+            signal,
+            parentModel,
+            onProgress: pushOrchestrationProgress,
+          });
 
-              stageStates[stageIndex].results = stage.tasks.map((item) => ({
-                subagent: item.subagent,
-                source: "unknown",
-                task: item.task.replace(/\{previous\}/g, previousOutput),
-                relation: item.relation ?? stageRelation,
-                step: stageIndex + 1,
-                exitCode: -1,
-                messages: [],
-                stderr: "",
-                usage: makeUsage(),
-              }));
+          const details = makeDetails("orchestration", orchestrationRun.snapshot.results, {
+            stages: orchestrationRun.snapshot.stages,
+            currentStage: orchestrationRun.snapshot.currentStage,
+          });
+          updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
 
-              orchestrationState.send({ type: "STAGE_STARTED", stageIndex });
-              const initialSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
-              orchestrationState.send({
-                type: "STAGE_PROGRESS",
-                stageIndex,
-                done: initialSummary.done,
-                running: initialSummary.running,
-                failed: initialSummary.failed,
-              });
-
-              const stageRunningDetails = buildDetails();
-              updateWorkflow(ctx, workflowId, title, toWorkflowLines(stageRunningDetails));
-              onUpdate?.({
-                content: [
-                  {
-                    type: "text",
-                    text: `Orchestration stage ${stageIndex + 1}/${stageCount} running (${stageStates[stageIndex].label})`,
-                  },
-                ],
-                details: stageRunningDetails,
-              });
-
-              const stageResults = await mapWithConcurrencyLimit(stage.tasks, concurrency, async (item, taskIndex) => {
-                const task = item.task.replace(/\{previous\}/g, previousOutput);
-
-                const result = await runSingleSubagent(
-                  ctx.cwd,
-                  subagents,
-                  {
-                    subagent: item.subagent,
-                    task,
-                    relation: item.relation ?? stageRelation,
-                    cwd: item.cwd ?? orchestrationConfig?.cwd,
-                    step: stageIndex + 1,
-                  },
-                  signal,
-                  (partial) => {
-                    stageStates[stageIndex].results[taskIndex] = partial;
-                    const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
-                    orchestrationState.send({
-                      type: "STAGE_PROGRESS",
-                      stageIndex,
-                      done: stageSummary.done,
-                      running: stageSummary.running,
-                      failed: stageSummary.failed,
-                    });
-
-                    const details = buildDetails();
-                    updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
-
-                    const stageProgress = details.stages?.[stageIndex];
-                    const progress = stageProgress
-                      ? `${stageProgress.done}/${stageProgress.total} complete`
-                      : `task ${taskIndex + 1}`;
-
-                    onUpdate?.({
-                      content: [
-                        {
-                          type: "text",
-                          text: `Orchestration stage ${stageIndex + 1}/${stageCount}: ${progress}`,
-                        },
-                      ],
-                      details,
-                    });
-                  },
-                  parentModel
-                );
-
-                stageStates[stageIndex].results[taskIndex] = result;
-                const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
-                orchestrationState.send({
-                  type: "STAGE_PROGRESS",
-                  stageIndex,
-                  done: stageSummary.done,
-                  running: stageSummary.running,
-                  failed: stageSummary.failed,
-                });
-
-                const details = buildDetails();
-                updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
-                onUpdate?.({
-                  content: [
-                    {
-                      type: "text",
-                      text: `Orchestration stage ${stageIndex + 1}/${stageCount}: ${stageStates[stageIndex].label}`,
-                    },
-                  ],
-                  details,
-                });
-
-                return result;
-              });
-
-              stageStates[stageIndex].results = stageResults;
-
-              const stageSummary = summarizeOrchestrationStage(stageStates[stageIndex]);
-              orchestrationState.send({
-                type: "STAGE_PROGRESS",
-                stageIndex,
-                done: stageSummary.done,
-                running: stageSummary.running,
-                failed: stageSummary.failed,
-              });
-
-              const failed = stageResults.find((item) => isFailed(item));
-              const successfulOutputs = stageResults
-                .filter((item) => !isFailed(item))
-                .map((item) => getFinalOutput(item.messages).trim())
-                .filter(Boolean);
-              previousOutput = successfulOutputs.join("\n\n");
-
-              if (failed) {
-                const error = failed.errorMessage || failed.stderr || getFinalOutput(failed.messages) || "(no output)";
-                orchestrationState.send({ type: "STAGE_FAILED", stageIndex, error });
-                const details = buildDetails();
-                return {
-                  content: [
-                    {
-                      type: "text",
-                      text: `Orchestration stopped at stage ${stageIndex + 1} (${stageStates[stageIndex].label}): ${error}`,
-                    },
-                  ],
-                  details,
-                  isError: true,
-                };
-              }
-
-              orchestrationState.send({
-                type: "STAGE_COMPLETED",
-                stageIndex,
-                previousOutput,
-              });
-            }
-
-            orchestrationState.send({ type: "COMPLETE" });
-            const details = buildDetails();
-            const finalOutputs = stageStates[stageStates.length - 1]?.results
-              .map((item) => getFinalOutput(item.messages).trim())
-              .filter(Boolean);
-
+          if (!orchestrationRun.ok) {
+            const orchestrationError = "error" in orchestrationRun ? orchestrationRun.error : "Unknown orchestration failure";
             return {
               content: [
                 {
                   type: "text",
-                  text: finalOutputs?.length
-                    ? finalOutputs.join("\n\n---\n\n")
-                    : `Orchestration complete (${orchestrationStages.length} stages).`,
+                  text: `Orchestration stopped: ${orchestrationError}`,
                 },
               ],
               details,
+              isError: true,
             };
-          } finally {
-            orchestrationState.stop();
           }
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: orchestrationRun.finalOutputs.length
+                  ? orchestrationRun.finalOutputs.join("\n\n---\n\n")
+                  : `Orchestration complete (${orchestrationStages.length} stages).`,
+              },
+            ],
+            details,
+          };
+        }
+
+        if (hasTeams && resolvedTeams.length > 0) {
+          if (resolvedTeams.length > MAX_TEAMS) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `Too many teams (${resolvedTeams.length}). Max is ${MAX_TEAMS}.`,
+                },
+              ],
+              details: makeDetails("teams", []),
+              isError: true,
+            };
+          }
+
+          const teamsFailureMode: TeamFailureMode = params.teamsFailureMode ?? "continue";
+          const teamsConcurrency = Math.max(
+            1,
+            Math.min(params.teamsConcurrency ?? Math.min(2, resolvedTeams.length), MAX_TEAM_CONCURRENCY)
+          );
+
+          const title = `teams (${resolvedTeams.length})`;
+          const teamStates: TeamRecord[] = resolvedTeams.map((team) => ({
+            id: team.id,
+            name: team.name,
+            orchestrationConfig: team.config.name,
+            status: "queued",
+            task: team.task,
+            relation: team.relation ?? relation,
+            workflowId,
+            configSource: team.config.source,
+            configFilePath: team.config.filePath,
+            results: [],
+            updatedAt: Date.now(),
+          }));
+
+          for (const record of teamStates) {
+            upsertTeamRecord(record);
+          }
+
+          const summarizeTeams = () => teamStates.map((team) => summarizeTeam(team));
+          const buildTeamDetails = () =>
+            makeDetails(
+              "teams",
+              teamStates.flatMap((team) => team.results),
+              {
+                teams: summarizeTeams(),
+                teamsFailureMode,
+                teamsConcurrency,
+              }
+            );
+
+          const publish = (message: string) => {
+            const details = buildTeamDetails();
+            updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
+            onUpdate?.({
+              content: [{ type: "text", text: message }],
+              details,
+            });
+          };
+
+          publish(`Teams queued (${resolvedTeams.length}).`);
+
+          let nextTeamIndex = 0;
+          let stopScheduling = false;
+
+          const runTeam = async (teamIndex: number, controller: AbortController): Promise<void> => {
+            const teamInput = resolvedTeams[teamIndex];
+            const state = teamStates[teamIndex];
+
+            if (!state || !teamInput) return;
+
+            try {
+              state.status = "provisioning";
+              if (!state.startedAt) state.startedAt = Date.now();
+              upsertTeamRecord(state);
+              publish(`Team ${state.name}: provisioning worktree`);
+
+              const worktree = await provisionTeamWorktree({
+                cwd: ctx.cwd,
+                teamName: state.name,
+                teamId: state.id,
+                baseRef: teamInput.baseRef,
+                worktreeParent: teamInput.worktreeParent,
+                signal: controller.signal,
+              });
+
+              state.repoRoot = worktree.repoRoot;
+              state.worktreePath = worktree.worktreePath;
+              state.worktreeBranch = worktree.branch;
+              state.worktreeBaseRef = worktree.baseRef;
+              state.status = "running";
+              upsertTeamRecord(state);
+              publish(`Team ${state.name}: running (${worktree.worktreePath})`);
+
+              const teamRelation = buildTeamRelation(relation, teamInput);
+              const orchestrationRun = await executeOrchestrationRun({
+                baseCwd: worktree.worktreePath,
+                subagents,
+                orchestrationStages: teamInput.stages,
+                relation: teamRelation,
+                orchestrationConfig: teamInput.config,
+                signal: controller.signal,
+                parentModel,
+                resolveTaskCwd: (taskCwd) => resolveTeamTaskCwd(worktree.worktreePath, taskCwd),
+                onProgress: (message, snapshot) => {
+                  state.stages = snapshot.stages;
+                  state.currentStage = snapshot.currentStage;
+                  state.results = snapshot.results.map((item) => ({ ...item, teamId: state.id }));
+                  upsertTeamRecord(state);
+                  publish(`Team ${state.name}: ${message}`);
+                },
+              });
+
+              state.stages = orchestrationRun.snapshot.stages;
+              state.currentStage = orchestrationRun.snapshot.currentStage;
+              state.results = orchestrationRun.snapshot.results.map((item) => ({ ...item, teamId: state.id }));
+
+              if (orchestrationRun.ok) {
+                state.status = "succeeded";
+                state.error = undefined;
+              } else {
+                const orchestrationError =
+                  "error" in orchestrationRun ? orchestrationRun.error : "Unknown orchestration failure";
+                if (controller.signal.aborted) {
+                  state.status = "cancelled";
+                  state.error = orchestrationError;
+                } else {
+                  state.status = "failed";
+                  state.error = orchestrationError;
+                }
+              }
+            } catch (error) {
+              if (controller.signal.aborted || signal?.aborted) {
+                state.status = "cancelled";
+              } else {
+                state.status = "failed";
+              }
+              state.error = error instanceof Error ? error.message : String(error);
+            } finally {
+              state.endedAt = Date.now();
+              upsertTeamRecord(state);
+              publish(`Team ${state.name}: ${state.status}`);
+            }
+          };
+
+          const worker = async () => {
+            while (true) {
+              if (stopScheduling) return;
+              const teamIndex = nextTeamIndex;
+              nextTeamIndex += 1;
+
+              if (teamIndex >= teamStates.length) return;
+
+              const state = teamStates[teamIndex];
+              const controller = new AbortController();
+              activeTeamControllers.set(state.id, controller);
+
+              const onParentAbort = () => controller.abort();
+              if (signal?.aborted) controller.abort();
+              else signal?.addEventListener("abort", onParentAbort, { once: true });
+
+              try {
+                await runTeam(teamIndex, controller);
+              } finally {
+                if (signal) signal.removeEventListener("abort", onParentAbort);
+                activeTeamControllers.delete(state.id);
+              }
+
+              if (state.status === "failed") {
+                if (teamsFailureMode === "fail-fast") {
+                  stopScheduling = true;
+                }
+                if (teamsFailureMode === "cancel-running") {
+                  stopScheduling = true;
+                  for (const [teamId, activeController] of activeTeamControllers.entries()) {
+                    if (teamId === state.id) continue;
+                    activeController.abort();
+                  }
+                }
+              }
+
+              if (signal?.aborted) {
+                stopScheduling = true;
+              }
+            }
+          };
+
+          const workerCount = Math.max(1, Math.min(teamsConcurrency, teamStates.length));
+          await Promise.all(new Array(workerCount).fill(null).map(() => worker()));
+
+          const parentAborted = Boolean(signal?.aborted);
+          if (stopScheduling || parentAborted) {
+            for (const state of teamStates) {
+              if (state.status !== "queued") continue;
+              state.status = parentAborted ? "cancelled" : "skipped";
+              if (!state.error && !parentAborted && teamsFailureMode !== "continue") {
+                state.error = `Skipped due to ${teamsFailureMode} policy`;
+              }
+              state.endedAt = Date.now();
+              upsertTeamRecord(state);
+            }
+          }
+
+          const details = buildTeamDetails();
+          updateWorkflow(ctx, workflowId, title, toWorkflowLines(details));
+
+          const succeeded = teamStates.filter((team) => team.status === "succeeded").length;
+          const failed = teamStates.filter((team) => team.status === "failed").length;
+          const cancelled = teamStates.filter((team) => team.status === "cancelled").length;
+          const skipped = teamStates.filter((team) => team.status === "skipped").length;
+          const isError = failed > 0 || cancelled > 0 || parentAborted;
+
+          const lines: string[] = [`Teams complete: ${succeeded}/${teamStates.length} succeeded`];
+          if (failed > 0) lines.push(`${failed} failed`);
+          if (cancelled > 0) lines.push(`${cancelled} cancelled`);
+          if (skipped > 0) lines.push(`${skipped} skipped`);
+          lines.push("");
+
+          for (const team of teamStates) {
+            const worktree = team.worktreePath ?? "(worktree not created)";
+            lines.push(`- ${team.name} [${team.status}] ${worktree}`);
+            if (team.error) lines.push(`  error: ${team.error}`);
+            const preview = buildTeamPreview(team.results);
+            if (preview) lines.push(`  output: ${preview}`);
+          }
+
+          return {
+            content: [{ type: "text", text: lines.join("\n") }],
+            details,
+            isError,
+          };
         }
 
         if (hasChain && params.chain) {
@@ -2061,7 +3306,7 @@ export default function subagentsExtension(pi: ExtensionAPI) {
     },
 
     renderCall(args, theme) {
-      const scope = args.scope ?? (args.orchestrationConfig ? "auto" : "user");
+      const scope = args.scope ?? (args.orchestrationConfig || args.teams?.length ? "auto" : "user");
 
       if (args.orchestrationConfig && !args.orchestration?.length) {
         let text =
@@ -2090,6 +3335,34 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
         if (args.orchestration.length > 3) {
           text += `\n  ${theme.fg("muted", `... +${args.orchestration.length - 3} more`)}`;
+        }
+
+        return new Text(text, 0, 0);
+      }
+
+      if (Array.isArray(args.teams) && args.teams.length > 0) {
+        const teams = args.teams as Array<{
+          name: string;
+          orchestrationConfig: string;
+          task: string;
+        }>;
+
+        let text =
+          theme.fg("toolTitle", theme.bold("subagent ")) +
+          theme.fg("accent", `teams (${teams.length})`) +
+          theme.fg("muted", ` [${scope}]`);
+
+        const concurrency = args.teamsConcurrency ?? 2;
+        const failureMode = args.teamsFailureMode ?? "continue";
+        text += `\n  ${theme.fg("muted", "concurrency:")} ${theme.fg("dim", `${concurrency}`)} ${theme.fg("muted", "failure:")} ${theme.fg("dim", failureMode)}`;
+
+        for (const team of teams.slice(0, 3)) {
+          const preview = team.task.length > 40 ? `${team.task.slice(0, 40)}...` : team.task;
+          text += `\n  ${theme.fg("accent", team.name)} ${theme.fg("dim", `${team.orchestrationConfig} · ${preview}`)}`;
+        }
+
+        if (teams.length > 3) {
+          text += `\n  ${theme.fg("muted", `... +${teams.length - 3} more`)}`;
         }
 
         return new Text(text, 0, 0);
@@ -2144,7 +3417,8 @@ export default function subagentsExtension(pi: ExtensionAPI) {
 
     renderResult(result, { expanded }, theme) {
       const details = result.details as SubagentToolDetails | undefined;
-      if (!details || details.results.length === 0) {
+      const hasTeamDetails = details?.mode === "teams" && (details.teams?.length ?? 0) > 0;
+      if (!details || (details.results.length === 0 && !hasTeamDetails)) {
         const text = result.content[0];
         return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
       }
@@ -2181,6 +3455,125 @@ export default function subagentsExtension(pi: ExtensionAPI) {
         }),
         { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, contextTokens: 0 }
       );
+
+      if (details.mode === "teams") {
+        const teams = details.teams ?? [];
+        const completed = teams.filter((team) =>
+          ["succeeded", "failed", "cancelled", "skipped"].includes(team.status)
+        ).length;
+        const runningTeams = teams.filter((team) => team.status === "running" || team.status === "provisioning").length;
+        const failedTeams = teams.filter((team) => team.status === "failed").length;
+
+        const icon =
+          runningTeams > 0
+            ? theme.fg("warning", "⏳")
+            : failedTeams > 0
+              ? theme.fg("warning", "◐")
+              : theme.fg("success", "✓");
+
+        const header =
+          `${icon} ${theme.fg("toolTitle", theme.bold("teams "))}` +
+          theme.fg("accent", `${completed}/${teams.length} complete`);
+
+        const statusIcon = (status: TeamStatus): string => {
+          if (status === "succeeded") return theme.fg("success", "✓");
+          if (status === "failed") return theme.fg("error", "✗");
+          if (status === "cancelled") return theme.fg("warning", "◐");
+          if (status === "skipped") return theme.fg("muted", "⏭");
+          if (status === "provisioning" || status === "running") return theme.fg("warning", "⏳");
+          return theme.fg("muted", "○");
+        };
+
+        if (!expanded) {
+          let text = header;
+          if (details.teamsConcurrency) {
+            text += `\n${theme.fg("muted", "concurrency: ")}${theme.fg("dim", `${details.teamsConcurrency}`)}`;
+          }
+          if (details.teamsFailureMode) {
+            text += `\n${theme.fg("muted", "failure mode: ")}${theme.fg("dim", details.teamsFailureMode)}`;
+          }
+
+          const max = 6;
+          for (const team of teams.slice(0, max)) {
+            const stages = team.stages ?? [];
+            const activeStage =
+              stages.length > 0
+                ? stages[Math.max(0, Math.min(team.currentStage ?? 0, stages.length - 1))]
+                : undefined;
+            const stageStatus =
+              activeStage && (team.status === "running" || team.status === "provisioning")
+                ? ` stage ${activeStage.index + 1}: ${activeStage.done}/${activeStage.total}`
+                : "";
+
+            text += `\n${statusIcon(team.status)} ${theme.fg("accent", team.name)} ${theme.fg("dim", `${team.status}${stageStatus}`)}`;
+          }
+
+          if (teams.length > max) {
+            text += `\n${theme.fg("muted", `... +${teams.length - max} more teams`)}`;
+          }
+
+          const usage = formatUsageStats(aggregate);
+          if (usage) text += `\n\n${theme.fg("dim", `Total: ${usage}`)}`;
+          text += `\n${theme.fg("muted", `(${getExpandHint()})`)}`;
+          return new Text(text, 0, 0);
+        }
+
+        const container = new Container();
+        container.addChild(new Text(header, 0, 0));
+
+        if (details.teamsConcurrency || details.teamsFailureMode) {
+          const parts: string[] = [];
+          if (details.teamsConcurrency) parts.push(`concurrency:${details.teamsConcurrency}`);
+          if (details.teamsFailureMode) parts.push(`failure:${details.teamsFailureMode}`);
+          container.addChild(new Text(theme.fg("dim", parts.join("  ")), 0, 0));
+        }
+
+        for (const team of teams) {
+          container.addChild(new Spacer(1));
+          container.addChild(
+            new Text(
+              `${statusIcon(team.status)} ${theme.fg("accent", team.name)} ${theme.fg("muted", `(${team.id})`)}`,
+              0,
+              0
+            )
+          );
+          container.addChild(new Text(theme.fg("muted", "config: ") + theme.fg("dim", team.orchestrationConfig), 0, 0));
+          if (team.worktreePath) {
+            container.addChild(new Text(theme.fg("muted", "worktree: ") + theme.fg("dim", team.worktreePath), 0, 0));
+          }
+          if (team.worktreeBranch) {
+            container.addChild(new Text(theme.fg("muted", "branch: ") + theme.fg("dim", team.worktreeBranch), 0, 0));
+          }
+
+          if (team.stages?.length) {
+            for (const stage of team.stages) {
+              container.addChild(
+                new Text(
+                  `  ${theme.fg("muted", `${stage.index + 1}.`)} ${theme.fg("accent", stage.label)} ${theme.fg("dim", `${stage.done}/${stage.total} done, ${stage.running} running, ${stage.failed} failed`)}`,
+                  0,
+                  0
+                )
+              );
+            }
+          }
+
+          if (team.preview) {
+            container.addChild(new Text(theme.fg("toolOutput", `  ${team.preview}`), 0, 0));
+          }
+
+          if (team.error) {
+            container.addChild(new Text(theme.fg("error", `  error: ${team.error}`), 0, 0));
+          }
+        }
+
+        const usage = formatUsageStats(aggregate);
+        if (usage) {
+          container.addChild(new Spacer(1));
+          container.addChild(new Text(theme.fg("dim", `Total: ${usage}`), 0, 0));
+        }
+
+        return container;
+      }
 
       if (details.mode === "single") {
         const item = details.results[0];

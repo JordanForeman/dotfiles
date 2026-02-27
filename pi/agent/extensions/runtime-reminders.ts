@@ -37,6 +37,18 @@ function isComplexPrompt(prompt: string): boolean {
   return COMPLEX_PROMPT_KEYWORDS.some((keyword) => lower.includes(keyword));
 }
 
+function requestsTeamExecution(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+  if (lower.includes("/teams")) return true;
+  if (lower.includes("teams mode")) return true;
+  if (lower.includes("make a team")) return true;
+  if (lower.includes("create a team")) return true;
+  if (lower.includes("spin up a team")) return true;
+  if (lower.includes("use a team")) return true;
+  if (lower.includes("team for yourself")) return true;
+  return false;
+}
+
 function isDelegationTool(toolName: string): boolean {
   return toolName === "subagent" || toolName === "subagent_list";
 }
@@ -105,9 +117,15 @@ export default function runtimeReminders(pi: ExtensionAPI) {
       turnCount - lastDelegationReminderTurn >= 3
     ) {
       reminders.push(
-        "This looks like complex, multi-step work. Consider using subagent_list and subagent delegation for deeper exploration or parallelized analysis."
+        "This looks like complex, multi-step work. Consider using subagent_list and subagent delegation, and use teams mode when you need parallel orchestration tracks in isolated worktrees."
       );
       lastDelegationReminderTurn = turnCount;
+    }
+
+    if (requestsTeamExecution(event.prompt)) {
+      reminders.push(
+        "The user explicitly asked for team-based execution. Prefer subagent teams mode and keep /teams list|show|cancel|cleanup available for control."
+      );
     }
 
     const usage = ctx.getContextUsage();
