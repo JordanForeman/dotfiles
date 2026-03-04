@@ -9,11 +9,15 @@ This directory contains project-local subagents for the dotfiles repository. The
 ├── README.md                              # This file
 ├── orchestrations/                        # Orchestration configurations
 │   ├── README.md                         # Orchestration documentation
-│   ├── feature-dev-pipeline.json         # End-to-end feature delivery pipeline
+│   ├── feature-pipeline.json             # Unified strategy-first feature pipeline
+│   ├── feature-dev-pipeline.json         # End-to-end feature delivery pipeline (legacy preset)
+│   ├── design-dev-pipeline.json          # Design-first frontend delivery pipeline (legacy preset)
 │   ├── pr-review.json                    # PR review orchestration
 │   └── team-creation-pipeline.json       # Reusable team capability creation pipeline
+├── execution-strategist.md               # Dynamic runtime strategy planner
 ├── team-creator.md                        # Team capability authoring specialist
 ├── pr-triage.md                          # PR analysis and triage
+├── design.md                             # Visual design specialist for frontend work
 ├── design-reviewer.md                    # Architecture and design review
 ├── rails-reviewer.md                     # Rails/backend code review
 ├── frontend-reviewer.md                  # React/TypeScript frontend review
@@ -49,6 +53,21 @@ pi subagent pr-triage --task "Analyze PR #1234"
 **Usage**:
 ```bash
 pi subagent design-reviewer --task "Review the design of feature-branch changes"
+```
+
+### Design (`design.md`)
+**Purpose**: Produces distinctive frontend visual direction and implementation-ready design handoffs
+
+**Focus Areas**:
+- Typography, color systems, and thematic cohesion
+- Motion choreography and high-impact interaction moments
+- Atmospheric backgrounds and depth
+- Avoiding generic AI-style visual output
+- Accessibility constraints while preserving strong aesthetics
+
+**Usage**:
+```bash
+pi subagent design --task "Create design direction for a marketing homepage redesign"
 ```
 
 ### Rails Reviewer (`rails-reviewer.md`)
@@ -97,6 +116,21 @@ pi subagent frontend-reviewer --task "Review frontend changes in PR #1234"
 pi subagent testing-reviewer --task "Review test quality in PR #1234"
 ```
 
+### Execution Strategist (`execution-strategist.md`)
+**Purpose**: Produces dynamic runtime orchestration strategies tailored to each objective
+
+**Focus Areas**:
+- Planning depth calibration (light/standard/deep)
+- Determining when code exploration is required
+- Determining whether a dedicated design track is required
+- Selecting orchestration vs teams execution topology
+- Emitting implementable runtime orchestration payloads
+
+**Usage**:
+```bash
+pi subagent execution-strategist --task "Plan dynamic execution strategy for implementing issue #123"
+```
+
 ### Team Creator (`team-creator.md`)
 **Purpose**: Creates reusable team capabilities from high-level descriptions
 
@@ -112,6 +146,33 @@ pi subagent team-creator --task "Create a reusable team capability for triaging 
 ```
 
 ## Orchestrations
+
+### Feature Pipeline (`orchestrations/feature-pipeline.json`)
+**Purpose**: Unified strategy-first feature delivery entrypoint
+
+**Workflow**:
+1. **Strategy Stage**: `execution-strategist` determines runtime topology (including whether design is required)
+2. **Execute Stage**: implementation proceeds according to chosen strategy
+3. **Review Stage**: quality/safety review
+
+**Usage**:
+```bash
+pi subagent --orchestration feature-pipeline --task "Implement issue #123"
+```
+
+### Design Dev Orchestration (`orchestrations/design-dev-pipeline.json`)
+**Purpose**: Delivers design-led frontend work with a dedicated design stage before implementation
+
+**Workflow**:
+1. **Plan Stage**: `planner` defines milestones and risks
+2. **Design Stage**: `design` creates visual direction + implementation handoff
+3. **Build Stage**: `builder` implements with design fidelity
+4. **Review Stage**: `frontend-reviewer` + `reviewer` validate quality and correctness
+
+**Usage**:
+```bash
+pi subagent --orchestration design-dev-pipeline --task "Build a distinctive marketing site for product launch"
+```
 
 ### PR Review Orchestration (`orchestrations/pr-review.json`)
 **Purpose**: Coordinates multiple specialized reviewers for comprehensive PR review
@@ -139,6 +200,15 @@ pi subagent --orchestration team-creation-pipeline --task "Create a reusable tea
 ```
 
 See `orchestrations/README.md` for detailed documentation.
+
+## Standard Operating Procedure
+
+For non-trivial execution requests, default workflow is:
+1. **Plan mode**: use `execution-strategist` to decide topology at runtime
+2. **Dynamic orchestration**: prefer inline `subagent` `orchestration`/`teams` payloads for task-specific stage composition
+3. **Execution + review**: run implementation tracks and reviewers according to strategy
+
+Use static orchestration configs as reusable presets, not hard constraints.
 
 ## Design Principles
 
@@ -190,12 +260,12 @@ pi subagent --orchestration pr-review --task "Review PR #1234"
   "teams": [
     {
       "name": "api",
-      "orchestrationConfig": "feature-dev-pipeline",
+      "orchestrationConfig": "feature-pipeline",
       "task": "Implement API changes"
     },
     {
       "name": "ui",
-      "orchestrationConfig": "feature-dev-pipeline",
+      "orchestrationConfig": "feature-pipeline",
       "task": "Implement UI changes"
     }
   ],
@@ -208,7 +278,7 @@ Each team runs in its own git worktree. Use `/teams list` and `/teams show <team
 
 Quick launcher commands:
 ```bash
-/subagents team feature-dev-pipeline api::"Implement API changes" || ui::"Implement UI changes"
+/subagents team feature-pipeline api::"Implement API changes" || ui::"Implement UI changes"
 /subagents team team-creation-pipeline meta-team::"Create a reusable team capability for docs automation"
 ```
 

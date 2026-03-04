@@ -55,6 +55,121 @@ function detectLanguageFragments(cwd: string): FragmentSelection[] {
   return selections;
 }
 
+function loadPackageJson(cwd: string): Record<string, unknown> | null {
+  const packageJsonPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return null;
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as Record<string, unknown>;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function hasDependency(pkg: Record<string, unknown>, name: string): boolean {
+  const dependencyFields = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
+
+  return dependencyFields.some((field) => {
+    const bucket = pkg[field];
+    if (!bucket || typeof bucket !== "object") return false;
+    return Object.prototype.hasOwnProperty.call(bucket, name);
+  });
+}
+
+function isDesignIntentPrompt(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+
+  const explicitDesignSignals = [
+    "design",
+    "visual",
+    "aesthetic",
+    "look and feel",
+    "ui",
+    "ux",
+    "brand",
+    "branding",
+    "typography",
+    "color palette",
+    "theme",
+    "animation",
+    "motion",
+  ];
+
+  if (explicitDesignSignals.some((signal) => lower.includes(signal))) {
+    return true;
+  }
+
+  const implicitFrontendDesignSignals = [
+    "marketing site",
+    "landing page",
+    "homepage",
+    "hero section",
+    "portfolio site",
+    "microsite",
+  ];
+
+  return implicitFrontendDesignSignals.some((signal) => lower.includes(signal));
+}
+
+function detectFrontendFragment(cwd: string, prompt: string): FragmentSelection | undefined {
+  if (isDesignIntentPrompt(prompt)) {
+    return {
+      relativePath: "lang/frontend-aesthetics.md",
+      reason: "Prompt indicates explicit or implicit design intent",
+    };
+  }
+
+  const configSignals = [
+    "tailwind.config.ts",
+    "tailwind.config.js",
+    "tailwind.config.cjs",
+    "postcss.config.js",
+    "postcss.config.cjs",
+    "vite.config.ts",
+    "vite.config.js",
+    "next.config.ts",
+    "next.config.js",
+    "next.config.mjs",
+    "nuxt.config.ts",
+    "nuxt.config.js",
+    "astro.config.ts",
+    "astro.config.mjs",
+  ];
+
+  if (hasAnyFile(cwd, configSignals)) {
+    return {
+      relativePath: "lang/frontend-aesthetics.md",
+      reason: "Frontend build/style config detected",
+    };
+  }
+
+  const pkg = loadPackageJson(cwd);
+  if (!pkg) return undefined;
+
+  const frontendDeps = [
+    "react",
+    "next",
+    "vue",
+    "nuxt",
+    "svelte",
+    "@sveltejs/kit",
+    "solid-js",
+    "astro",
+    "@angular/core",
+    "preact",
+  ];
+
+  if (frontendDeps.some((dep) => hasDependency(pkg, dep))) {
+    return {
+      relativePath: "lang/frontend-aesthetics.md",
+      reason: "Frontend framework dependencies detected",
+    };
+  }
+
+  return undefined;
+}
+
 function detectOsFragment(platform: NodeJS.Platform): FragmentSelection | undefined {
   if (platform === "darwin") {
     return { relativePath: "os/macos.md", reason: "Host platform is macOS" };
@@ -88,7 +203,7 @@ function detectReadOnlyMode(activeTools: string[]): boolean {
   return !hasBash && !hasEdit && !hasWrite && !hasGitMutator;
 }
 
-function collectSelections(cwd: string, platform: NodeJS.Platform, activeTools: string[]): FragmentSelection[] {
+function collectSelections(cwd: string, platform: NodeJS.Platform, activeTools: string[], prompt: string): FragmentSelection[] {
   const selections: FragmentSelection[] = [
     {
       relativePath: "base/core.md",
@@ -120,6 +235,9 @@ function collectSelections(cwd: string, platform: NodeJS.Platform, activeTools: 
       reason: "Active tools indicate read-only/planning mode",
     });
   }
+
+  const frontendFragment = detectFrontendFragment(cwd, prompt);
+  if (frontendFragment) selections.push(frontendFragment);
 
   selections.push(...detectLanguageFragments(cwd));
 
@@ -154,11 +272,11 @@ function formatCompositionSummary(composition: Composition): string[] {
   ];
 }
 
-async function composeRuntimePrompt(cwd: string, platform: NodeJS.Platform, activeTools: string[]): Promise<{
+async function composeRuntimePrompt(cwd: string, platform: NodeJS.Platform, activeTools: string[], prompt: string): Promise<{
   text: string;
   composition: Composition;
 }> {
-  const considered = collectSelections(cwd, platform, activeTools);
+  const considered = collectSelections(cwd, platform, activeTools, prompt);
   const selected: FragmentSelection[] = [];
   const blocks: string[] = [];
 
@@ -237,7 +355,7 @@ export default function promptComposer(pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, ctx) => {
     const activeTools = pi.getActiveTools();
-    const result = await composeRuntimePrompt(ctx.cwd, process.platform, activeTools);
+    const result = await composeRuntimePrompt(ctx.cwd, process.platform, activeTools, event.prompt);
     lastComposition = result.composition;
 
     if (ctx.hasUI) {

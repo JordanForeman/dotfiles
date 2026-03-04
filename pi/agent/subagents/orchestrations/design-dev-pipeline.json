@@ -1,0 +1,50 @@
+{
+  "name": "design-dev-pipeline",
+  "description": "Design-first frontend delivery pipeline for visually distinctive experiences",
+  "relation": "Deliver design-led frontend work by codifying visual direction before implementation.",
+  "scope": "both",
+  "confirmProjectSubagents": true,
+  "stages": [
+    {
+      "label": "plan",
+      "tasks": [
+        {
+          "subagent": "planner",
+          "task": "Create a concise implementation plan for this objective with milestone order, risks, and validation strategy. Explicitly call out team track boundaries."
+        }
+      ]
+    },
+    {
+      "label": "design",
+      "tasks": [
+        {
+          "subagent": "design",
+          "task": "Create a visual design direction and implementation handoff for this objective. Include typography, color tokens, motion strategy, and background/depth guidance. Use prior planning context:\n\n{previous}"
+        }
+      ]
+    },
+    {
+      "label": "build",
+      "tasks": [
+        {
+          "subagent": "builder",
+          "task": "Implement the objective using the design handoff and plan below. Preserve design intent and keep changes incremental with validation notes.\n\n{previous}"
+        }
+      ]
+    },
+    {
+      "label": "review",
+      "tasks": [
+        {
+          "subagent": "frontend-reviewer",
+          "task": "Review the implementation for frontend quality and fidelity to design intent. Flag blockers first, then non-blocking improvements.\n\n{previous}"
+        },
+        {
+          "subagent": "reviewer",
+          "task": "Perform a general correctness/safety review on the implemented changes and provide go/no-go guidance.\n\n{previous}"
+        }
+      ],
+      "concurrency": 2
+    }
+  ]
+}

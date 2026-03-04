@@ -268,12 +268,25 @@ function summarizeSubtasks(state: UiModeState, usageTotal: number, compact: bool
   return items.join(" · ");
 }
 
+function formatElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h`;
+}
+
 function summarizeOrchestrations(state: UiModeState, compact: boolean): string {
   const limit = compact ? 2 : 4;
+  const staleThresholdMs = 90_000;
+  const now = Date.now();
   const items = state.orchestrations.slice(0, limit).map((item) => {
     const normalizedName = item.name.startsWith("team:") ? item.name.slice(5) : item.name;
     const name = short(normalizedName, compact ? 16 : 20);
-    return `${name} ${item.status}`;
+    const ageMs = now - item.updatedAt;
+    const stale = ageMs >= staleThresholdMs ? "⚠" : "";
+    return `${name} ${item.status} ${formatElapsed(ageMs)}${stale}`.trim();
   });
 
   if (items.length === 0) {
@@ -281,6 +294,16 @@ function summarizeOrchestrations(state: UiModeState, compact: boolean): string {
   }
 
   return items.join(" · ");
+}
+
+function summarizeActiveWork(state: UiModeState): string | null {
+  const running = Array.from(state.running.values()).sort((a, b) => b.startedAt - a.startedAt);
+  const active = running[0];
+  if (!active) return null;
+
+  const age = formatElapsed(Date.now() - active.startedAt);
+  const update = active.lastUpdate ? short(active.lastUpdate, 72) : short(active.summary, 72);
+  return `${active.toolName} ${age} · ${update}`;
 }
 
 function buildFooterRows(ctx: ExtensionContext, state: UiModeState, pi: ExtensionAPI, width: number): string[] {
@@ -310,6 +333,7 @@ function buildFooterRows(ctx: ExtensionContext, state: UiModeState, pi: Extensio
   const usageTotal = usage?.tokens ?? 0;
   const tasksSummary = summarizeSubtasks(state, usageTotal, state.indicatorsCompact);
   const orchestrationSummary = summarizeOrchestrations(state, state.indicatorsCompact);
+  const activeWorkSummary = summarizeActiveWork(state);
 
   if (width >= 96) {
     const gap = 3;
@@ -326,12 +350,20 @@ function buildFooterRows(ctx: ExtensionContext, state: UiModeState, pi: Extensio
     const rightBody = padRight(truncateToWidth(orchestrationSummary, rightBodyWidth), rightBodyWidth);
 
     const row2 = `${leftPrefix}${leftBody}${" ".repeat(gap)}${rightPrefix}${rightBody}`;
-    return [row1, row2];
+    const rows = [row1, row2];
+    if (activeWorkSummary) {
+      rows.push(truncateToWidth(`active · ${activeWorkSummary}`, width));
+    }
+    return rows;
   }
 
   const row2 = truncateToWidth(`tasks · ${tasksSummary}`, width);
   const row3 = truncateToWidth(`teams/orch · ${orchestrationSummary}`, width);
-  return [row1, row2, row3];
+  const rows = [row1, row2, row3];
+  if (activeWorkSummary) {
+    rows.push(truncateToWidth(`active · ${activeWorkSummary}`, width));
+  }
+  return rows;
 }
 
 function refreshUI(ctx: ExtensionContext, state: UiModeState, pi: ExtensionAPI): void {
@@ -355,6 +387,9 @@ function refreshUI(ctx: ExtensionContext, state: UiModeState, pi: ExtensionAPI):
         }
         if (line.startsWith("teams/orch")) {
           return theme.fg("dim", line);
+        }
+        if (line.startsWith("active")) {
+          return theme.fg("warning", line);
         }
         return theme.fg("muted", line);
       });

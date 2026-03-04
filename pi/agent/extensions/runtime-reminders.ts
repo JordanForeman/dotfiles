@@ -11,6 +11,12 @@ const COMPLEX_PROMPT_KEYWORDS = [
   "workflow",
   "multi-step",
   "orchestrat",
+  "build",
+  "create",
+  "ship",
+  "spin up",
+  "marketing site",
+  "landing page",
 ];
 
 function extractToolResultText(event: any): string {
@@ -37,6 +43,35 @@ function isComplexPrompt(prompt: string): boolean {
   return COMPLEX_PROMPT_KEYWORDS.some((keyword) => lower.includes(keyword));
 }
 
+function hasDesignIntent(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+  const signals = [
+    "design",
+    "visual",
+    "aesthetic",
+    "ui",
+    "ux",
+    "brand",
+    "typography",
+    "color palette",
+    "theme",
+    "motion",
+    "animation",
+    "marketing site",
+    "landing page",
+    "hero section",
+    "microsite",
+  ];
+
+  return signals.some((signal) => lower.includes(signal));
+}
+
+function looksLikeExecutionObjective(prompt: string): boolean {
+  const lower = prompt.toLowerCase();
+  const executionSignals = ["implement", "build", "create", "ship", "spin up", "deliver", "set up"];
+  return executionSignals.some((signal) => lower.includes(signal));
+}
+
 function requestsTeamExecution(prompt: string): boolean {
   const lower = prompt.toLowerCase();
   if (lower.includes("/teams")) return true;
@@ -47,6 +82,10 @@ function requestsTeamExecution(prompt: string): boolean {
   if (lower.includes("use a team")) return true;
   if (lower.includes("team for yourself")) return true;
   return false;
+}
+
+function shouldDefaultToTeams(prompt: string): boolean {
+  return requestsTeamExecution(prompt) || looksLikeExecutionObjective(prompt) || isComplexPrompt(prompt);
 }
 
 function isDelegationTool(toolName: string): boolean {
@@ -112,12 +151,15 @@ export default function runtimeReminders(pi: ExtensionAPI) {
     }
 
     if (
-      turnsWithoutDelegation >= 3 &&
-      isComplexPrompt(event.prompt) &&
-      turnCount - lastDelegationReminderTurn >= 3
+      shouldDefaultToTeams(event.prompt) &&
+      turnsWithoutDelegation >= 0 &&
+      turnCount - lastDelegationReminderTurn >= 1
     ) {
       reminders.push(
-        "This looks like complex, multi-step work. Consider using subagent_list and subagent delegation, and use teams mode when you need parallel orchestration tracks in isolated worktrees."
+        "Standard operating procedure: enter plan mode first, then execute via dynamic subagent orchestration. Use teams mode by default for multi-step implementation so tracks run in isolated worktrees."
+      );
+      reminders.push(
+        "In plan mode, explicitly decide: planning depth, whether code exploration is required, whether a design track is required, and whether to split execution into parallel teams."
       );
       lastDelegationReminderTurn = turnCount;
     }
@@ -125,6 +167,12 @@ export default function runtimeReminders(pi: ExtensionAPI) {
     if (requestsTeamExecution(event.prompt)) {
       reminders.push(
         "The user explicitly asked for team-based execution. Prefer subagent teams mode and keep /teams list|show|cancel|cleanup available for control."
+      );
+    }
+
+    if (hasDesignIntent(event.prompt)) {
+      reminders.push(
+        "Design intent detected. Include a dedicated design subagent in the team workflow and ensure frontend aesthetic guidance is actively applied."
       );
     }
 

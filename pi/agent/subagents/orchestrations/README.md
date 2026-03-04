@@ -4,10 +4,51 @@
 
 This directory contains orchestration configurations for coordinating specialized subagents.
 
+For non-trivial feature work, prefer **strategy-first dynamic orchestration** at runtime (inline `subagent` `orchestration`/`teams` payloads) and use these configs as reusable presets.
+
 Current configs:
-- `feature-dev-pipeline.json` — end-to-end feature delivery (plan/build/review/git)
+- `feature-pipeline.json` — unified strategy-first feature delivery entrypoint
+- `feature-dev-pipeline.json` — end-to-end feature delivery (legacy preset)
+- `design-dev-pipeline.json` — design-first frontend delivery (legacy preset)
 - `pr-review.json` — multi-dimensional PR review
 - `team-creation-pipeline.json` — creates reusable team capabilities
+
+## `feature-pipeline.json`
+
+Unified strategy-first feature delivery orchestration.
+
+### Stages
+1. **strategy**: `execution-strategist` plans runtime topology and decides if design/investigation tracks are needed
+2. **execute**: implementation proceeds per strategy
+3. **review**: final correctness/safety review
+
+### Usage
+
+```bash
+pi subagent --orchestration feature-pipeline --task "Implement issue #123"
+```
+
+## `design-dev-pipeline.json`
+
+A design-first frontend orchestration for objectives where visual quality is core to success.
+
+### Stages
+1. **plan**: `planner` defines milestones, risks, and validation strategy
+2. **design**: `design` codifies visual direction (typography, color tokens, motion, depth)
+3. **build**: `builder` implements using the design handoff
+4. **review**: `frontend-reviewer` + `reviewer` validate design fidelity and correctness
+
+### Usage
+
+```bash
+# Build a design-led marketing experience
+pi subagent --orchestration design-dev-pipeline --task "Spin up a launch marketing site with distinctive visual identity"
+```
+
+Teams launcher example:
+```bash
+/subagents team design-dev-pipeline marketing::"Spin up launch marketing site" || docs::"Draft launch copy page structure"
+```
 
 ## `pr-review.json`
 
