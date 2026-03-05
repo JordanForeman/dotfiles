@@ -11,6 +11,10 @@ fi
 # Add wisely, as too many plugins slow down shell startup.
 plugins=(git)
 
+# Nix profile paths for C/C++ compilation
+export CPATH="$HOME/.nix-profile/include"
+export LIBRARY_PATH="$HOME/.nix-profile/lib"
+
 # Zsh plugins (managed by Nix)
 # Find and source zsh-autocomplete
 for plugin_path in $HOME/.nix-profile/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh \
@@ -49,6 +53,11 @@ PS1='
 %F{14}%n%f %F{11}[%m]%f %1~$(git_branch)
 %F{10}󰄾%f '
 
+# Starship prompt (if installed)
+if command -v starship &> /dev/null; then
+    eval "$(starship init zsh)"
+fi
+
 # Shadowenv
 if command -v shadowenv &> /dev/null; then
     eval "$(shadowenv init zsh)"
@@ -69,7 +78,9 @@ if [ -f ~/.aliases ]; then
 fi
 
 # Local settings
-source ~/.profile
+if [ -f ~/.profile ]; then
+    source ~/.profile
+fi
 
 # bun completions
 [ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"

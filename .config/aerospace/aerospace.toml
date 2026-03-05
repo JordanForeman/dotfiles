@@ -61,15 +61,15 @@ exec-on-workspace-change = ['/bin/bash', '-c',
     inner.vertical =   28
     outer.left =       20
     outer.bottom =     20
-    outer.top =        [{monitor.'G34WQC' = 52 }, {monitor.'built-in' = 12}, {monitor.'DELL U2723QE' = 52}, 12]
+    outer.top =        [{monitor.'G34WQC' = 18 }, {monitor.'built-in' = 12}, {monitor.'DELL U2723QE' = 18}, 12]
     outer.right =      20
 
 [workspace-to-monitor-force-assignment]
-    1 = 'secondary'
-    2 = 'main'
-    3 = 'main'
-    4 = 'main'
-    5 = 'secondary'
+    1 = 'DELL U2723QE'
+    2 = 'G34WQC'
+    3 = 'G34WQC'
+    4 = 'Built-in Retina Display'
+    5 = 'Built-in Retina Display'
 
 # 'main' binding mode declaration
 # See: https://nikitabobko.github.io/AeroSpace/guide#binding-modes

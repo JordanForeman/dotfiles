@@ -11,6 +11,17 @@
     recursive = true;
   };
 
+  # AeroSpace + Sketchybar are macOS-only
+  xdg.configFile."aerospace" = {
+    source = ../../.config/aerospace;
+    recursive = true;
+  };
+
+  xdg.configFile."sketchybar" = {
+    source = ../../.config/sketchybar;
+    recursive = true;
+  };
+
   # Neovim - not managed by home-manager (edit directly in dotfiles)
   # Already symlinked via install script, avoids nix store hash churn
 

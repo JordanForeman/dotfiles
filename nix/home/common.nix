@@ -28,6 +28,18 @@ in
 
   home.file.".aliases".source = ../../.aliases;
 
+  xdg.configFile."lazygit" = {
+    source = ../../.config/lazygit;
+    recursive = true;
+  };
+
+  xdg.configFile."lazydocker" = {
+    source = ../../.config/lazydocker;
+    recursive = true;
+  };
+
+  xdg.configFile."starship.toml".source = ../../.config/starship.toml;
+
   xdg.configFile."zellij" = {
     source = ../../.config/zellij;
     recursive = true;
