@@ -146,5 +146,6 @@ Do **not** edit machine-local runtime state in `~/.pi/agent` and expect it to be
 ## Additional docs
 
 - `USAGE.md` — command-focused reference
+- `nix/README.md` — module conventions and reconciliation policies
 - `nix/machines/README.md` — machine-target notes
 - `pi/README.md` — Pi-specific architecture and inheritance details
