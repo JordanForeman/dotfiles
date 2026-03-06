@@ -12,7 +12,7 @@ pi/agent/
 ├── prompts/            # General development prompts (9 generic + 5 work-specific prompts)
 ├── skills/             # Reusable skills (1 generic + 4 work-specific skills)
 ├── extensions/         # Shareable Pi extensions
-│   ├── subagents/     # Robust subagents extension
+│   ├── pi-ask.ts
 │   ├── theme-switcher.ts
 │   ├── ui-modern.ts   # Default modern session UI (enhanced footer indicators)
 │   └── safety-gate.ts
@@ -116,7 +116,10 @@ Edit files directly in `~/.pi/agent/`:
 
 ## 🔧 Subagents System
 
-The dotfiles use the **robust subagents extension** (not the outdated local one).
+Subagent definitions are synced from dotfiles (`pi/agent/subagents/`).
+
+If you use slash-command functionality, treat the providing extension/package as
+machine-local configuration outside this repository.
 
 ### Available Subagents (discovered at runtime):
 
@@ -139,19 +142,9 @@ The dotfiles use the **robust subagents extension** (not the outdated local one)
 
 ### Usage:
 
+Use your locally installed slash-command provider for subagent/orchestration workflows.
+
 ```bash
-# List available subagents
-/subagents list
-
-# Use a subagent
-/subagent planner "Create implementation plan for feature X"
-
-# Run orchestration
-/subagents orchestrate feature-dev-pipeline "Build user authentication"
-
-# Run multiple teams in parallel (each team gets its own git worktree)
-/subagents team feature-dev-pipeline api::"Build API changes" || ui::"Build UI changes"
-
 # Ask Pi to run an objective using teams mode
 /teams do Build issue #123 with separate API and UI tracks
 # (shorthand)
@@ -159,12 +152,6 @@ The dotfiles use the **robust subagents extension** (not the outdated local one)
 
 # Inspect team status
 /teams list
-
-# Build reusable team capability artifacts directly
-/subagents orchestrate team-creation-pipeline "Create a reusable team capability for docs automation"
-
-# Launch a team-creation team in teams mode
-/subagents team team-creation-pipeline team-factory::"Create a reusable team capability for docs automation"
 
 # Create a reusable team capability via manager helper
 /teams create "A generalist team that can take a feature request from planning to PR"
@@ -178,13 +165,12 @@ Check symlinks: `ls -la ~/.pi/agent/subagents/`
 Should point to dotfiles.
 
 ### Extensions not loading
-Check `agent-work/settings.json` has:
-```json
-"packages": [
-  "../agent/extensions/subagent",
-  "../agent/extensions/mcp-bridge"
-]
-```
+Check your active profile settings (for example `~/.pi/agent-shopify/settings.json`)
+for valid package entries, e.g. local paths under `../agent/extensions/*` and any
+remote package entries you installed.
+
+If you still see `../agent/extensions/subagents` or `../agent/extensions/subagent`,
+remove those legacy entries.
 
 ### work MCP tools not working
 Ensure local files exist:
