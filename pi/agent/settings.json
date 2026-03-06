@@ -14,6 +14,9 @@
     "maxRetries": 3
   },
   "enableSkillCommands": true,
+  "packages": [
+    "npm:pi-subagents"
+  ],
   "enabledModels": [
     "claude-*",
     "gpt-*",

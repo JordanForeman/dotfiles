@@ -66,7 +66,7 @@
 
   # Pi agent configuration (shareable base)
   # Note: Local-only content (secrets, Shopify MCP wrappers) stays in ~/.pi/agent/
-  home.file.".pi/agent/subagents" = {
+  home.file.".pi/agent/agents" = {
     source = ../../pi/agent/subagents;
     recursive = true;
   };

@@ -1,7 +1,7 @@
 ---
 name: design-reviewer
 description: A code reviewer with a focus on code design and architecture
-tools: read,bash,grep,find
+tools: read, bash, grep, find
 tags: review,design,architecture
 ---
 

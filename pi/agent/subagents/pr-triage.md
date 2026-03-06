@@ -1,7 +1,7 @@
 ---
 name: pr-triage
 description: Analyzes PRs and identifies applicable review dimensions
-tools: read,bash,grep,find
+tools: read, bash, grep, find
 tags: review,triage,analysis
 ---
 

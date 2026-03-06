@@ -25,8 +25,7 @@ dotfiles/
 ├── pi/                       # Version-controlled Pi config source
 │   ├── README.md
 │   └── agent/
-│       ├── subagents/
-│       ├── orchestrations/
+│       ├── subagents/           # Agent defs (synced to ~/.pi/agent/agents)
 │       ├── extensions/
 │       ├── prompts/
 │       ├── skills/
@@ -82,8 +81,9 @@ For tools like Neovim, Ghostty, Zellij, Git, Zsh:
 ### 3) Pi configuration changes (subset of this repo)
 
 Pi is one part of the repo; keep it isolated to `pi/`:
-- Subagents: `pi/agent/subagents/`
-- Orchestrations: `pi/agent/subagents/orchestrations/`
+- Agents (source): `pi/agent/subagents/`
+- Optional chain files: `pi/agent/subagents/*.chain.md`
+- Orchestration JSON: `pi/agent/subagents/orchestrations/`
 - Extensions: `pi/agent/extensions/`
 - Prompts/skills/themes: corresponding `pi/agent/*` folders
 

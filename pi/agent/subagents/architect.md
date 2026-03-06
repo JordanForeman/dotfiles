@@ -1,7 +1,7 @@
 ---
 name: architect
 description: Proposes simple, effective, and cohesive solution designs to business problems. Explores code and questions the user when necessary.
-tools: read bash grep find ls
+tools: read, bash, grep, find, ls
 tags: planning,architecture
 ---
 

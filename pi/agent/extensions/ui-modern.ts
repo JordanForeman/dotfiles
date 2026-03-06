@@ -18,7 +18,7 @@ type SubtaskUsage = {
   contextTokens: number;
 };
 
-type OrchestrationSignal = {
+type DelegationSignal = {
   name: string;
   status: string;
   updatedAt: number;
@@ -28,54 +28,38 @@ type UiModeState = {
   running: Map<string, ToolTask>;
   recent: ToolTask[];
   subtasks: SubtaskUsage[];
-  orchestrations: OrchestrationSignal[];
+  delegations: DelegationSignal[];
   indicatorsVisible: boolean;
   indicatorsCompact: boolean;
 };
 
 type SubagentDetails = {
-  mode?: string;
+  mode?: "single" | "parallel" | "chain" | "management" | string;
   results?: Array<{
+    agent?: string;
     subagent?: string;
     usage?: {
       contextTokens?: number;
     };
   }>;
-  stages?: Array<{
-    total?: number;
-    done?: number;
-    running?: number;
-    failed?: number;
-  }>;
-  orchestrationConfig?: {
-    name?: string;
-  };
-  teams?: Array<{
-    id?: string;
-    name?: string;
-    status?: string;
-    stages?: Array<{
-      total?: number;
-      done?: number;
-      running?: number;
-      failed?: number;
-    }>;
-  }>;
+  chainAgents?: string[];
+  totalSteps?: number;
+  currentStepIndex?: number;
 };
 
 const MODERN_THEME = "bluloco-modern";
-const LEGACY_RAIL_WIDGET_KEY = "ui-modern-rail";
-const LEGACY_HEADER_WIDGET_KEY = "ui-modern-header";
+const RAIL_WIDGET_KEY = "ui-modern-rail";
+const HEADER_WIDGET_KEY = "ui-modern-header";
 const MAX_RECENT = 14;
 const MAX_SUBTASKS = 6;
-const MAX_ORCHESTRATIONS = 6;
+const MAX_DELEGATIONS = 6;
 
 function makeState(): UiModeState {
   return {
     running: new Map<string, ToolTask>(),
     recent: [],
     subtasks: [],
-    orchestrations: [],
+    delegations: [],
     indicatorsVisible: true,
     indicatorsCompact: false,
   };
@@ -113,12 +97,12 @@ function summarizeInput(toolName: string, input: Record<string, unknown>): strin
   if (toolName === "edit") return `edit ${short(String(input.path ?? "?"), 70)}`;
   if (toolName === "write") return `write ${short(String(input.path ?? "?"), 70)}`;
   if (toolName === "subagent") {
-    const single = typeof input.subagent === "string" ? input.subagent : undefined;
-    const taskCount = Array.isArray(input.tasks) ? input.tasks.length : 0;
-    const teamCount = Array.isArray(input.teams) ? input.teams.length : 0;
-    if (single) return `delegate ${single}`;
-    if (taskCount > 0) return `delegate ${taskCount} task${taskCount === 1 ? "" : "s"}`;
-    if (teamCount > 0) return `teams ${teamCount}`;
+    const single = typeof input.agent === "string" ? input.agent : undefined;
+    const parallelCount = Array.isArray(input.tasks) ? input.tasks.length : 0;
+    const chainCount = Array.isArray(input.chain) ? input.chain.length : 0;
+    if (single) return `run ${single}`;
+    if (chainCount > 0) return `chain ${chainCount}`;
+    if (parallelCount > 0) return `parallel ${parallelCount}`;
     return "delegate";
   }
   return `${toolName}`;
@@ -153,30 +137,30 @@ function applyModernTheme(ctx: ExtensionContext): void {
   }
 }
 
-function clearLegacyUi(ctx: ExtensionContext): void {
+function clearWidgets(ctx: ExtensionContext): void {
   if (!ctx.hasUI) return;
-  ctx.ui.setWidget(LEGACY_RAIL_WIDGET_KEY, undefined);
-  ctx.ui.setWidget(LEGACY_HEADER_WIDGET_KEY, undefined);
+  ctx.ui.setWidget(RAIL_WIDGET_KEY, undefined);
+  ctx.ui.setWidget(HEADER_WIDGET_KEY, undefined);
 }
 
-function upsertOrchestration(state: UiModeState, name: string, status: string): void {
+function upsertDelegation(state: UiModeState, name: string, status: string): void {
   const normalized = short(name, 40);
-  const next: OrchestrationSignal = {
+  const next: DelegationSignal = {
     name: normalized,
     status: short(status, 16),
     updatedAt: Date.now(),
   };
 
-  const index = state.orchestrations.findIndex((item) => item.name === normalized);
+  const index = state.delegations.findIndex((item) => item.name === normalized);
   if (index >= 0) {
-    state.orchestrations[index] = next;
+    state.delegations[index] = next;
   } else {
-    state.orchestrations.unshift(next);
+    state.delegations.unshift(next);
   }
 
-  state.orchestrations = state.orchestrations
+  state.delegations = state.delegations
     .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, MAX_ORCHESTRATIONS);
+    .slice(0, MAX_DELEGATIONS);
 }
 
 function applySubagentDetails(state: UiModeState, detailsRaw: unknown): void {
@@ -186,7 +170,7 @@ function applySubagentDetails(state: UiModeState, detailsRaw: unknown): void {
   if (Array.isArray(details.results)) {
     state.subtasks = details.results
       .map((item) => ({
-        name: item.subagent ?? "subagent",
+        name: item.agent ?? item.subagent ?? "agent",
         contextTokens: item.usage?.contextTokens ?? 0,
       }))
       .filter((item) => item.contextTokens > 0)
@@ -194,60 +178,28 @@ function applySubagentDetails(state: UiModeState, detailsRaw: unknown): void {
       .slice(0, MAX_SUBTASKS);
   }
 
-  if (details.mode === "teams" && Array.isArray(details.teams)) {
-    for (const team of details.teams) {
-      const name = team.name?.trim() || team.id?.trim() || "team";
-      const statusRaw = team.status?.trim() || "running";
-      const stages = Array.isArray(team.stages) ? team.stages : [];
-
-      let status = statusRaw;
-      if (statusRaw === "running" && stages.length > 0) {
-        const total = stages.length;
-        const completed = stages.filter((stage) => {
-          const stageTotal = stage.total ?? 0;
-          const stageDone = stage.done ?? 0;
-          return stageTotal > 0 && stageDone >= stageTotal;
-        }).length;
-        status = `${completed}/${total}`;
-      }
-
-      upsertOrchestration(state, `team:${name}`, status);
-    }
+  if (details.mode === "chain") {
+    const chainName =
+      Array.isArray(details.chainAgents) && details.chainAgents.length > 0
+        ? details.chainAgents.join("→")
+        : "chain";
+    const total = details.totalSteps ?? details.chainAgents?.length ?? 0;
+    const current = typeof details.currentStepIndex === "number" ? details.currentStepIndex + 1 : undefined;
+    const status = total > 0 ? `${Math.min(current ?? 0, total)}/${total}` : "running";
+    upsertDelegation(state, chainName, status);
     return;
   }
 
-  const hasOrchestrationSignal =
-    details.mode === "orchestration" || Boolean(details.orchestrationConfig?.name) || Array.isArray(details.stages);
-
-  if (!hasOrchestrationSignal) return;
-
-  const name = details.orchestrationConfig?.name?.trim() || "orchestration";
-  const stages = Array.isArray(details.stages) ? details.stages : [];
-
-  if (stages.length === 0) {
-    upsertOrchestration(state, name, "running");
+  if (details.mode === "parallel") {
+    const total = Array.isArray(details.results) ? details.results.length : 0;
+    upsertDelegation(state, "parallel", total > 0 ? `${total} done` : "running");
     return;
   }
 
-  const total = stages.length;
-  const completed = stages.filter((stage) => {
-    const stageTotal = stage.total ?? 0;
-    const stageDone = stage.done ?? 0;
-    return stageTotal > 0 && stageDone >= stageTotal;
-  }).length;
-  const running = stages.filter((stage) => (stage.running ?? 0) > 0).length;
-  const failed = stages.filter((stage) => (stage.failed ?? 0) > 0).length;
-
-  let status = "running";
-  if (failed > 0) status = "fail";
-  else if (completed >= total) status = "done";
-  else status = `${completed}/${total}`;
-
-  if (running > 0 && completed < total && failed === 0) {
-    status = `${completed}/${total}`;
+  if (details.mode === "single") {
+    const agentName = details.results?.[0]?.agent ?? details.results?.[0]?.subagent ?? "agent";
+    upsertDelegation(state, `run:${agentName}`, "done");
   }
-
-  upsertOrchestration(state, name, status);
 }
 
 function summarizeSubtasks(state: UiModeState, usageTotal: number, compact: boolean): string {
@@ -277,13 +229,12 @@ function formatElapsed(ms: number): string {
   return `${hours}h`;
 }
 
-function summarizeOrchestrations(state: UiModeState, compact: boolean): string {
+function summarizeDelegations(state: UiModeState, compact: boolean): string {
   const limit = compact ? 2 : 4;
   const staleThresholdMs = 90_000;
   const now = Date.now();
-  const items = state.orchestrations.slice(0, limit).map((item) => {
-    const normalizedName = item.name.startsWith("team:") ? item.name.slice(5) : item.name;
-    const name = short(normalizedName, compact ? 16 : 20);
+  const items = state.delegations.slice(0, limit).map((item) => {
+    const name = short(item.name, compact ? 16 : 20);
     const ageMs = now - item.updatedAt;
     const stale = ageMs >= staleThresholdMs ? "⚠" : "";
     return `${name} ${item.status} ${formatElapsed(ageMs)}${stale}`.trim();
@@ -332,7 +283,7 @@ function buildFooterRows(ctx: ExtensionContext, state: UiModeState, pi: Extensio
 
   const usageTotal = usage?.tokens ?? 0;
   const tasksSummary = summarizeSubtasks(state, usageTotal, state.indicatorsCompact);
-  const orchestrationSummary = summarizeOrchestrations(state, state.indicatorsCompact);
+  const delegationSummary = summarizeDelegations(state, state.indicatorsCompact);
   const activeWorkSummary = summarizeActiveWork(state);
 
   if (width >= 96) {
@@ -341,13 +292,13 @@ function buildFooterRows(ctx: ExtensionContext, state: UiModeState, pi: Extensio
     const rightWidth = width - gap - leftWidth;
 
     const leftPrefix = "tasks · ";
-    const rightPrefix = "teams/orch · ";
+    const rightPrefix = "delegation · ";
 
     const leftBodyWidth = Math.max(8, leftWidth - leftPrefix.length);
     const rightBodyWidth = Math.max(8, rightWidth - rightPrefix.length);
 
     const leftBody = padRight(truncateToWidth(tasksSummary, leftBodyWidth), leftBodyWidth);
-    const rightBody = padRight(truncateToWidth(orchestrationSummary, rightBodyWidth), rightBodyWidth);
+    const rightBody = padRight(truncateToWidth(delegationSummary, rightBodyWidth), rightBodyWidth);
 
     const row2 = `${leftPrefix}${leftBody}${" ".repeat(gap)}${rightPrefix}${rightBody}`;
     const rows = [row1, row2];
@@ -358,7 +309,7 @@ function buildFooterRows(ctx: ExtensionContext, state: UiModeState, pi: Extensio
   }
 
   const row2 = truncateToWidth(`tasks · ${tasksSummary}`, width);
-  const row3 = truncateToWidth(`teams/orch · ${orchestrationSummary}`, width);
+  const row3 = truncateToWidth(`delegation · ${delegationSummary}`, width);
   const rows = [row1, row2, row3];
   if (activeWorkSummary) {
     rows.push(truncateToWidth(`active · ${activeWorkSummary}`, width));
@@ -370,7 +321,7 @@ function refreshUI(ctx: ExtensionContext, state: UiModeState, pi: ExtensionAPI):
   if (!ctx.hasUI) return;
 
   applyModernTheme(ctx);
-  clearLegacyUi(ctx);
+  clearWidgets(ctx);
   ctx.ui.setHeader(undefined);
 
   ctx.ui.setFooter((_tui, theme) => ({
@@ -385,7 +336,7 @@ function refreshUI(ctx: ExtensionContext, state: UiModeState, pi: ExtensionAPI):
         if (line.startsWith("tasks")) {
           return theme.fg("muted", line);
         }
-        if (line.startsWith("teams/orch")) {
+        if (line.startsWith("delegation")) {
           return theme.fg("dim", line);
         }
         if (line.startsWith("active")) {
@@ -422,7 +373,7 @@ export default function uiModern(pi: ExtensionAPI) {
             `footer indicators: visible=${state.indicatorsVisible}, compact=${state.indicatorsCompact}`,
             `running tasks: ${state.running.size}`,
             `subtasks tracked: ${state.subtasks.length}`,
-            `teams/orchestrations tracked: ${state.orchestrations.length}`,
+            `delegations tracked: ${state.delegations.length}`,
             usagePercent === null ? "context: unknown" : `context: ${usagePercent.toFixed(1)}%`,
           ].join("\n"),
           "info"
@@ -518,23 +469,16 @@ export default function uiModern(pi: ExtensionAPI) {
     });
 
     if (event.toolName === "subagent") {
-      const orchestrationConfig = typeof input.orchestrationConfig === "string" ? input.orchestrationConfig.trim() : "";
-      const orchestrationStages = Array.isArray(input.orchestration) ? input.orchestration.length : 0;
-      const teams = Array.isArray(input.teams) ? input.teams : [];
+      const single = typeof input.agent === "string" ? input.agent.trim() : "";
+      const chain = Array.isArray(input.chain) ? input.chain : [];
+      const tasks = Array.isArray(input.tasks) ? input.tasks : [];
 
-      if (teams.length > 0) {
-        for (const team of teams) {
-          if (!team || typeof team !== "object") continue;
-          const name =
-            typeof (team as { name?: unknown }).name === "string"
-              ? (team as { name?: string }).name!.trim()
-              : "team";
-          upsertOrchestration(state, `team:${name || "team"}`, "running");
-        }
-      } else if (orchestrationConfig) {
-        upsertOrchestration(state, orchestrationConfig, "running");
-      } else if (orchestrationStages > 0) {
-        upsertOrchestration(state, `inline-${orchestrationStages}-stage`, "running");
+      if (single) {
+        upsertDelegation(state, `run:${single}`, "running");
+      } else if (chain.length > 0) {
+        upsertDelegation(state, "chain", `0/${chain.length}`);
+      } else if (tasks.length > 0) {
+        upsertDelegation(state, "parallel", `0/${tasks.length}`);
       }
     }
 
@@ -590,7 +534,7 @@ export default function uiModern(pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     if (!ctx.hasUI) return;
-    clearLegacyUi(ctx);
+    clearWidgets(ctx);
     ctx.ui.setHeader(undefined);
     ctx.ui.setFooter(undefined);
   });

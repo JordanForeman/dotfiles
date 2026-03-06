@@ -2,9 +2,9 @@
 - Read before editing and preserve existing local style/conventions.
 - Avoid speculative refactors or opportunistic cleanups unless explicitly requested.
 - When uncertain, investigate first; do not guess.
-- Standard operating procedure for non-trivial execution requests is **plan → dynamic orchestration → execution** (not direct solo implementation).
-- In plan mode, determine strategy dynamically per task: planning depth, required investigation, whether design is needed, and whether work should run in parallel teams.
-- Default to delegated execution for implementation work: prefer teams mode so each orchestration runs in its own worktree and can be tracked independently.
-- Prefer inline runtime orchestration (`subagent` tool `orchestration` / `teams`) when the task needs dynamic stage composition.
-- Interpret natural-language requests to "make a team" as explicit delegation guidance (not as mere suggestion).
-- For frontend/design objectives (explicit or implicit, e.g. marketing site requests), include a dedicated design subagent track and propagate its output into implementation tracks.
+- For non-trivial execution requests, default to **plan → delegate → execute** instead of immediate solo implementation.
+- Choose delegation topology dynamically per task:
+  - single specialist (`/run`)
+  - sequential handoff (`/chain`)
+  - parallel independent tracks (`/parallel`)
+- For frontend/design objectives (explicit or implicit, e.g. marketing site requests), include a dedicated design agent when useful and propagate that output into implementation.

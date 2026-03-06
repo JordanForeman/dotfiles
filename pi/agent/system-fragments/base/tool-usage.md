@@ -2,6 +2,6 @@
 - Use parallel tool calls for independent reads/searches to reduce latency.
 - Sequence dependent operations explicitly; do not use placeholder arguments.
 - Communicate directly in assistant text, never via shell echo/printf.
-- Use `subagent` teams mode for parallel orchestration work instead of ad-hoc parallel git edits in one worktree.
-- Honor both explicit (`/teams ...`) and natural-language team requests (e.g., "make a team for this").
-- For explicit control, use `/teams do <objective>` (or `/teams <objective>` shorthand) for execution and `/teams create <description>` for reusable team artifacts.
+- For multi-agent work, prefer the `subagent` tool over manual roleplay.
+- Use chain or parallel execution (`/chain`, `/parallel`, or `subagent` `chain`/`tasks`) based on dependency structure.
+- When in doubt, pick the smallest viable delegation topology first, then expand only if needed.

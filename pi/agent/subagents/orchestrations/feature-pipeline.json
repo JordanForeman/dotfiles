@@ -10,7 +10,7 @@
       "tasks": [
         {
           "subagent": "execution-strategist",
-          "task": "Design a runtime execution strategy for this objective. Decide planning depth, pre-investigation, design involvement, and whether to use orchestration or teams mode. Output an implementable orchestration payload."
+          "task": "Design a runtime execution strategy for this objective. Decide planning depth, pre-investigation, design involvement, and whether to use single, chain, or parallel delegation. Output an implementable execution payload."
         }
       ]
     },

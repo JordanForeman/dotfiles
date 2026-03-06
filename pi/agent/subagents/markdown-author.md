@@ -1,7 +1,7 @@
 ---
 name: markdown-author
 description: Given information on a topic, authors a concise document in clearly structured and formatted markdown
-tools: read write bash ls grep find
+tools: read, write, bash, ls, grep, find
 tags: documentation,writing
 ---
 

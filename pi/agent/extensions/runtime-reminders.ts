@@ -10,7 +10,6 @@ const COMPLEX_PROMPT_KEYWORDS = [
   "plan",
   "workflow",
   "multi-step",
-  "orchestrat",
   "build",
   "create",
   "ship",
@@ -72,46 +71,29 @@ function looksLikeExecutionObjective(prompt: string): boolean {
   return executionSignals.some((signal) => lower.includes(signal));
 }
 
-function requestsTeamExecution(prompt: string): boolean {
+function requestsParallelExecution(prompt: string): boolean {
   const lower = prompt.toLowerCase();
-  if (lower.includes("/teams")) return true;
-  if (lower.includes("teams mode")) return true;
-  if (lower.includes("make a team")) return true;
-  if (lower.includes("create a team")) return true;
-  if (lower.includes("spin up a team")) return true;
-  if (lower.includes("use a team")) return true;
-  if (lower.includes("team for yourself")) return true;
-  return false;
+  return (
+    lower.includes("/parallel") ||
+    lower.includes("parallel") ||
+    lower.includes("team") ||
+    lower.includes("split") ||
+    lower.includes("multiple tracks")
+  );
 }
 
-function shouldDefaultToTeams(prompt: string): boolean {
-  return requestsTeamExecution(prompt) || looksLikeExecutionObjective(prompt) || isComplexPrompt(prompt);
-}
-
-function isDelegationTool(toolName: string): boolean {
-  return toolName === "subagent" || toolName === "subagent_list";
+function shouldDefaultToDelegation(prompt: string): boolean {
+  return looksLikeExecutionObjective(prompt) || isComplexPrompt(prompt);
 }
 
 export default function runtimeReminders(pi: ExtensionAPI) {
   let turnCount = 0;
-  let delegatedThisTurn = false;
-  let turnsWithoutDelegation = 0;
 
   let pendingPermissionReminder = false;
   let pendingEditDriftReminder = false;
 
   let lastDelegationReminderTurn = -100;
   let lastContextReminderTurn = -100;
-
-  pi.on("turn_start", async () => {
-    delegatedThisTurn = false;
-  });
-
-  pi.on("tool_call", async (event) => {
-    if (isDelegationTool(event.toolName)) {
-      delegatedThisTurn = true;
-    }
-  });
 
   pi.on("tool_result", async (event) => {
     if (!event.isError) return;
@@ -130,7 +112,6 @@ export default function runtimeReminders(pi: ExtensionAPI) {
 
   pi.on("turn_end", async () => {
     turnCount += 1;
-    turnsWithoutDelegation = delegatedThisTurn ? 0 : turnsWithoutDelegation + 1;
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
@@ -150,29 +131,25 @@ export default function runtimeReminders(pi: ExtensionAPI) {
       pendingEditDriftReminder = false;
     }
 
-    if (
-      shouldDefaultToTeams(event.prompt) &&
-      turnsWithoutDelegation >= 0 &&
-      turnCount - lastDelegationReminderTurn >= 1
-    ) {
+    if (shouldDefaultToDelegation(event.prompt) && turnCount - lastDelegationReminderTurn >= 1) {
       reminders.push(
-        "Standard operating procedure: enter plan mode first, then execute via dynamic subagent orchestration. Use teams mode by default for multi-step implementation so tracks run in isolated worktrees."
+        "Standard operating procedure: start with a brief plan, then execute via `subagent` using the smallest viable mode (single, chain, or parallel)."
       );
       reminders.push(
-        "In plan mode, explicitly decide: planning depth, whether code exploration is required, whether a design track is required, and whether to split execution into parallel teams."
+        "Avoid over-coordination. Pick one specialist first, then expand to chain/parallel only when decomposition is clearly beneficial."
       );
       lastDelegationReminderTurn = turnCount;
     }
 
-    if (requestsTeamExecution(event.prompt)) {
+    if (requestsParallelExecution(event.prompt)) {
       reminders.push(
-        "The user explicitly asked for team-based execution. Prefer subagent teams mode and keep /teams list|show|cancel|cleanup available for control."
+        "Parallel intent detected. Prefer `/parallel` (or a chain with parallel steps), and split tasks so file ownership is conflict-safe."
       );
     }
 
     if (hasDesignIntent(event.prompt)) {
       reminders.push(
-        "Design intent detected. Include a dedicated design subagent in the team workflow and ensure frontend aesthetic guidance is actively applied."
+        "Design intent detected. Include a dedicated design-focused agent when useful and carry its output into implementation steps."
       );
     }
 
@@ -186,10 +163,7 @@ export default function runtimeReminders(pi: ExtensionAPI) {
 
     if (reminders.length === 0) return;
 
-    const reminderText = [
-      "## Runtime reminders",
-      ...reminders.map((line) => `- ${line}`),
-    ].join("\n");
+    const reminderText = ["## Runtime reminders", ...reminders.map((line) => `- ${line}`)].join("\n");
 
     return {
       systemPrompt: `${event.systemPrompt}\n\n${reminderText}`,

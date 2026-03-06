@@ -1,7 +1,7 @@
 ---
 name: testing-reviewer
 description: A code reviewer with a focus on test quality and coverage
-tools: read,bash,grep,find
+tools: read, bash, grep, find
 tags: review,testing,quality
 ---
 

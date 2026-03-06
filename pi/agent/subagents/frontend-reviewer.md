@@ -1,7 +1,7 @@
 ---
 name: frontend-reviewer
 description: A code reviewer with a focus on frontend technologies (React, TypeScript, etc.)
-tools: read,bash,grep,find
+tools: read, bash, grep, find
 tags: review,frontend,react,typescript
 ---
 

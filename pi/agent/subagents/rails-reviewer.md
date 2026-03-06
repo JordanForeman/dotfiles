@@ -1,7 +1,7 @@
 ---
 name: rails-reviewer
 description: A code reviewer with a focus on Ruby on Rails
-tools: read,bash,grep,find
+tools: read, bash, grep, find
 tags: review,code-quality,rails,ruby
 ---
 
