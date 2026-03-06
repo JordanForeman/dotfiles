@@ -26,6 +26,7 @@ SHARED_PACKAGES: list[str | dict[str, Any]] = [
     "../agent/extensions/theme-switcher.ts",
     "../agent/extensions/pi-ask.ts",
     "../agent/extensions/ui-modern.ts",
+    "npm:pi-subagents",
 ]
 
 SHARED_THEMES = ["../agent/themes"]
