@@ -12,7 +12,7 @@ pi/agent/
 │   └── orchestrations/ # Orchestration JSON artifacts
 ├── prompts/            # Prompt templates
 ├── skills/             # Reusable skills
-├── extensions/         # Local shareable extensions (pi-ask, ui, safety, etc.)
+├── extensions/         # Local shareable extensions (pi-ask, ui, etc.)
 ├── themes/             # UI themes
 ├── settings.json       # Base settings (includes npm:pi-subagents)
 ├── keybindings.json
@@ -41,7 +41,7 @@ To keep this repo stable, agent files are still authored in `pi/agent/subagents/
 3. ~/.pi/agent-work/            # Active profile (work overrides)
 ```
 
-`agent-work/settings.json` is reconciled to include shared extensions/themes plus `npm:pi-subagents`.
+`agent-work/settings.json` is reconciled to include shared extensions/themes, Pascal's pinned `bash-guard` + `hashline` package entries, plus `npm:pi-subagents`.
 
 ## Usage
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Reconcile ~/.pi/agent-*/settings.json with shared dotfiles defaults.
 
-This script appends required shared package/theme references and removes known
-legacy package references that should no longer be loaded.
+This script appends required shared package/theme references while preserving
+profile-local package choices.
 """
 
 from __future__ import annotations
@@ -10,21 +10,78 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 
-SHARED_PACKAGES = [
-    "../agent/extensions/safety-gate.ts",
+PASCAL_PI_AGENT_PACKAGE = {
+    "source": "git:https://github.com/pascal-de-ladurantaye/pi-agent@b82bbe70ae4af185a9a7fb9419b2ce87a788b1d6",
+    "extensions": ["extensions/bash-guard/**", "extensions/hashline/**"],
+    "skills": [],
+    "prompts": [],
+    "themes": [],
+}
+
+SHARED_PACKAGES: list[str | dict[str, Any]] = [
+    PASCAL_PI_AGENT_PACKAGE,
     "../agent/extensions/theme-switcher.ts",
     "../agent/extensions/pi-ask.ts",
     "../agent/extensions/ui-modern.ts",
 ]
 
-DEPRECATED_PACKAGES = [
-    "../agent/extensions/subagents",
-    "../agent/extensions/subagent",
-]
-
 SHARED_THEMES = ["../agent/themes"]
+
+
+def package_source(item: Any) -> str | None:
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        source = item.get("source")
+        if isinstance(source, str):
+            return source
+    return None
+
+
+def ensure_package(packages: list[Any], wanted: str | dict[str, Any]) -> bool:
+    if wanted in packages:
+        return False
+
+    wanted_source = package_source(wanted)
+    if not wanted_source:
+        packages.append(wanted)
+        return True
+
+    for i, existing in enumerate(packages):
+        if package_source(existing) != wanted_source:
+            continue
+
+        if isinstance(existing, str):
+            if isinstance(wanted, dict):
+                packages[i] = wanted
+                return True
+            return False
+
+        if isinstance(existing, dict) and isinstance(wanted, dict):
+            changed = False
+            for key, wanted_value in wanted.items():
+                existing_value = existing.get(key)
+                if isinstance(wanted_value, list):
+                    if not isinstance(existing_value, list):
+                        existing[key] = list(wanted_value)
+                        changed = True
+                        continue
+                    for item in wanted_value:
+                        if item not in existing_value:
+                            existing_value.append(item)
+                            changed = True
+                elif existing_value != wanted_value:
+                    existing[key] = wanted_value
+                    changed = True
+            return changed
+
+        return False
+
+    packages.append(wanted)
+    return True
 
 
 def main() -> int:
@@ -56,15 +113,8 @@ def main() -> int:
             data["packages"] = packages
             changed = True
 
-        original_len = len(packages)
-        packages = [item for item in packages if item not in DEPRECATED_PACKAGES]
-        if len(packages) != original_len:
-            data["packages"] = packages
-            changed = True
-
         for item in SHARED_PACKAGES:
-            if item not in packages:
-                packages.append(item)
+            if ensure_package(packages, item):
                 changed = True
 
         themes = data.get("themes")

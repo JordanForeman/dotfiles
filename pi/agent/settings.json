@@ -15,6 +15,16 @@
   },
   "enableSkillCommands": true,
   "packages": [
+    {
+      "source": "git:https://github.com/pascal-de-ladurantaye/pi-agent@b82bbe70ae4af185a9a7fb9419b2ce87a788b1d6",
+      "extensions": [
+        "extensions/bash-guard/**",
+        "extensions/hashline/**"
+      ],
+      "skills": [],
+      "prompts": [],
+      "themes": []
+    },
     "npm:pi-subagents"
   ],
   "enabledModels": [

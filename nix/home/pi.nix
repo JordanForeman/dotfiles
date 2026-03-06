@@ -31,14 +31,73 @@ if not root.exists():
     raise SystemExit(0)
 
 shared_packages = [
-    "../agent/extensions/safety-gate.ts",
+    {
+        "source": "git:https://github.com/pascal-de-ladurantaye/pi-agent@b82bbe70ae4af185a9a7fb9419b2ce87a788b1d6",
+        "extensions": ["extensions/bash-guard/**", "extensions/hashline/**"],
+        "skills": [],
+        "prompts": [],
+        "themes": [],
+    },
     "../agent/extensions/theme-switcher.ts",
     "../agent/extensions/pi-ask.ts",
     "../agent/extensions/ui-modern.ts",
     "npm:pi-subagents",
 ]
 shared_themes = ["../agent/themes"]
-obsolete_package_sources = {"../agent/extensions/subagents", "../agent/extensions/subagent"}
+
+
+def package_source(item):
+    if isinstance(item, str):
+        return item
+    if isinstance(item, dict):
+        source = item.get("source")
+        if isinstance(source, str):
+            return source
+    return None
+
+
+def ensure_package(packages, wanted):
+    if wanted in packages:
+        return False
+
+    wanted_source = package_source(wanted)
+    if not wanted_source:
+        packages.append(wanted)
+        return True
+
+    for i, existing in enumerate(packages):
+        if package_source(existing) != wanted_source:
+            continue
+
+        if isinstance(existing, str):
+            if isinstance(wanted, dict):
+                packages[i] = wanted
+                return True
+            return False
+
+        if isinstance(existing, dict) and isinstance(wanted, dict):
+            changed = False
+            for key, wanted_value in wanted.items():
+                existing_value = existing.get(key)
+                if isinstance(wanted_value, list):
+                    if not isinstance(existing_value, list):
+                        existing[key] = list(wanted_value)
+                        changed = True
+                        continue
+                    for item in wanted_value:
+                        if item not in existing_value:
+                            existing_value.append(item)
+                            changed = True
+                elif existing_value != wanted_value:
+                    existing[key] = wanted_value
+                    changed = True
+            return changed
+
+        return False
+
+    packages.append(wanted)
+    return True
+
 
 for profile in root.iterdir():
     if not profile.is_dir() or not profile.name.startswith("agent-"):
@@ -61,23 +120,8 @@ for profile in root.iterdir():
         data["packages"] = packages
         changed = True
 
-    filtered_packages = []
-    for item in packages:
-        if isinstance(item, str) and item in obsolete_package_sources:
-            changed = True
-            continue
-        if isinstance(item, dict) and isinstance(item.get("source"), str) and item["source"] in obsolete_package_sources:
-            changed = True
-            continue
-        filtered_packages.append(item)
-
-    if filtered_packages != packages:
-        packages = filtered_packages
-        data["packages"] = packages
-
     for item in shared_packages:
-        if item not in packages:
-            packages.append(item)
+        if ensure_package(packages, item):
             changed = True
 
     themes = data.get("themes")
@@ -107,15 +151,19 @@ PY
     fi
   '';
 
-  # Remove replaced subagent extension directories that should no longer be loaded.
-  home.activation.piSubagentsExtensionCleanup = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    for extDir in \
+  # Remove replaced extension paths that should no longer be loaded.
+  home.activation.piObsoleteExtensionCleanup = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    for extPath in \
       "${config.home.homeDirectory}/.pi/agent/extensions/subagents" \
-      "${config.home.homeDirectory}/.pi/agent/extensions/subagent"
+      "${config.home.homeDirectory}/.pi/agent/extensions/subagent" \
+      "${config.home.homeDirectory}/.pi/agent/extensions/safety-gate.ts"
     do
-      if [ -d "$extDir" ]; then
-        echo "→ Removing obsolete subagent extension directory at $extDir"
-        rm -rf "$extDir"
+      if [ -d "$extPath" ]; then
+        echo "→ Removing obsolete extension directory at $extPath"
+        rm -rf "$extPath"
+      elif [ -f "$extPath" ] || [ -L "$extPath" ]; then
+        echo "→ Removing obsolete extension file at $extPath"
+        rm -f "$extPath"
       fi
     done
   '';
@@ -125,7 +173,6 @@ PY
   # Extension package loading is handled via settings packages (npm:pi-subagents).
   # Local shareable extensions are symlinked normally.
   home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
-  home.file.".pi/agent/extensions/safety-gate.ts".source = ../../pi/agent/extensions/safety-gate.ts;
   home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
   home.file.".pi/agent/extensions/ui-modern.ts".source = ../../pi/agent/extensions/ui-modern.ts;
 
