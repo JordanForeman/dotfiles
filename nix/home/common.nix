@@ -16,6 +16,20 @@ in
     ./pi.nix
   ];
 
+  pi.extensions = [
+    {
+      source = "git:https://github.com/pascal-de-ladurantaye/pi-agent@b82bbe70ae4af185a9a7fb9419b2ce87a788b1d6";
+      extensions = [
+        "extensions/bash-guard/**"
+        "extensions/hashline/**"
+      ];
+      skills = [ ];
+      prompts = [ ];
+      themes = [ ];
+    }
+    "npm:pi-subagents"
+  ];
+
   programs.home-manager.enable = true;
 
   # nixpkgs is pinned via flake; avoid release-mismatch warnings.
@@ -23,6 +37,10 @@ in
 
   # Suppress the home-manager news pager during switch.
   news.display = "silent";
+
+  home.sessionVariables = {
+    NPM_CONFIG_PREFIX = "${config.home.homeDirectory}/.npm-global";
+  };
 
   xdg.enable = true;
 

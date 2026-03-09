@@ -87,6 +87,7 @@ fi
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
+export NPM_CONFIG_PREFIX="$HOME/.npm-global"
 export PATH="$HOME/.npm-global/bin:$BUN_INSTALL/bin:$PATH"
 [[ -d "/usr/local/sbin" ]] && export PATH="/usr/local/sbin:$PATH"
 

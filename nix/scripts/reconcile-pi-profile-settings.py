@@ -21,15 +21,30 @@ PASCAL_PI_AGENT_PACKAGE = {
     "themes": [],
 }
 
-SHARED_PACKAGES: list[str | dict[str, Any]] = [
-    PASCAL_PI_AGENT_PACKAGE,
+DEFAULT_SHARED_PACKAGES: list[str | dict[str, Any]] = [
     "../agent/extensions/theme-switcher.ts",
     "../agent/extensions/pi-ask.ts",
     "../agent/extensions/ui-modern.ts",
+    PASCAL_PI_AGENT_PACKAGE,
     "npm:pi-subagents",
 ]
 
-SHARED_THEMES = ["../agent/themes"]
+DEFAULT_SHARED_THEMES = ["../agent/themes"]
+
+
+def load_shared_defaults(defaults_path: Path | None) -> tuple[list[Any], list[str]]:
+    if defaults_path and defaults_path.exists():
+        try:
+            data = json.loads(defaults_path.read_text())
+            if isinstance(data, dict):
+                packages = data.get("packages")
+                themes = data.get("themes")
+                if isinstance(packages, list) and isinstance(themes, list):
+                    return packages, [t for t in themes if isinstance(t, str)]
+        except Exception:
+            pass
+
+    return list(DEFAULT_SHARED_PACKAGES), list(DEFAULT_SHARED_THEMES)
 
 
 def package_source(item: Any) -> str | None:
@@ -87,8 +102,12 @@ def ensure_package(packages: list[Any], wanted: str | dict[str, Any]) -> bool:
 
 def main() -> int:
     root = Path(sys.argv[1]).expanduser() if len(sys.argv) > 1 else Path.home() / ".pi"
+    defaults_path = Path(sys.argv[2]).expanduser() if len(sys.argv) > 2 else None
+
     if not root.exists() or not root.is_dir():
         return 0
+
+    shared_packages, shared_themes = load_shared_defaults(defaults_path)
 
     for profile in root.iterdir():
         if not profile.is_dir() or not profile.name.startswith("agent-"):
@@ -114,7 +133,7 @@ def main() -> int:
             data["packages"] = packages
             changed = True
 
-        for item in SHARED_PACKAGES:
+        for item in shared_packages:
             if ensure_package(packages, item):
                 changed = True
 
@@ -124,7 +143,7 @@ def main() -> int:
             data["themes"] = themes
             changed = True
 
-        for item in SHARED_THEMES:
+        for item in shared_themes:
             if item not in themes:
                 themes.append(item)
                 changed = True

@@ -14,7 +14,7 @@ pi/agent/
 ├── skills/             # Reusable skills
 ├── extensions/         # Local shareable extensions (pi-ask, ui, etc.)
 ├── themes/             # UI themes
-├── settings.json       # Base settings (includes npm:pi-subagents)
+├── settings.json       # Base template (packages are rendered via Nix `pi.extensions`)
 ├── keybindings.json
 └── AGENTS.md
 ```
@@ -41,7 +41,9 @@ To keep this repo stable, agent files are still authored in `pi/agent/subagents/
 3. ~/.pi/agent-work/            # Active profile (work overrides)
 ```
 
-`agent-work/settings.json` is reconciled to include shared extensions/themes, Pascal's pinned `bash-guard` + `hashline` package entries, plus `npm:pi-subagents`.
+`agent-work/settings.json` is reconciled from machine-generated defaults (`~/.pi/profile-settings-defaults.json`), so shared package policy is defined in Nix and applied consistently without hardcoding profile-specific repository layout.
+
+Because `hashline` declares a transitive runtime dependency on `diff`, Home Manager activation also bootstraps `diff@8.0.0` into the cached Pascal `hashline` extension directory when needed.
 
 ## Usage
 
