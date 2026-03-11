@@ -49,7 +49,6 @@ in
       [
         "../agent/extensions/theme-switcher.ts"
         "../agent/extensions/pi-ask.ts"
-        "../agent/extensions/ui-modern.ts"
       ]
       ++ config.pi.extensions
     );
@@ -101,7 +100,6 @@ in
     # Local shareable extensions are symlinked normally.
     home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
     home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
-    home.file.".pi/agent/extensions/ui-modern.ts".source = ../../pi/agent/extensions/ui-modern.ts;
 
     home.file.".pi/agent/prompts" = {
       source = ../../pi/agent/prompts;

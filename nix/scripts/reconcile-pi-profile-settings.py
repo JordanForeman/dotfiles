@@ -24,7 +24,6 @@ PASCAL_PI_AGENT_PACKAGE = {
 DEFAULT_SHARED_PACKAGES: list[str | dict[str, Any]] = [
     "../agent/extensions/theme-switcher.ts",
     "../agent/extensions/pi-ask.ts",
-    "../agent/extensions/ui-modern.ts",
     PASCAL_PI_AGENT_PACKAGE,
     "npm:pi-subagents",
     "npm:pi-powerline-footer",
