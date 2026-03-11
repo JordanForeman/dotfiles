@@ -106,4 +106,9 @@ in
   home.activation.installPi = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     ${pkgs.bash}/bin/bash ${../scripts/ensure-pi.sh} ${pkgs.nodejs}/bin/npm
   '';
+
+  # Google Workspace CLI (installed globally via npm)
+  home.activation.installGws = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    ${pkgs.bash}/bin/bash ${../scripts/ensure-gws.sh} ${pkgs.nodejs}/bin/npm
+  '';
 }
