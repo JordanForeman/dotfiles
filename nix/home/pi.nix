@@ -107,6 +107,11 @@ in
     };
     home.file.".pi/agent/extensions/figma-mcp.ts".source = ../../pi/agent/extensions/figma-mcp.ts;
 
+    home.file.".pi/agent/extensions/prompt-composer" = {
+      source = ../../pi/agent/extensions/prompt-composer;
+      recursive = true;
+    };
+
     home.file.".pi/agent/prompts" = {
       source = ../../pi/agent/prompts;
       recursive = true;
