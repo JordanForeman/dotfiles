@@ -101,6 +101,12 @@ in
     home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
     home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
 
+    home.file.".pi/agent/extensions/figma-labor" = {
+      source = ../../pi/agent/extensions/figma-labor;
+      recursive = true;
+    };
+    home.file.".pi/agent/extensions/figma-mcp.ts".source = ../../pi/agent/extensions/figma-mcp.ts;
+
     home.file.".pi/agent/prompts" = {
       source = ../../pi/agent/prompts;
       recursive = true;
