@@ -25,7 +25,8 @@
       "prompts": [],
       "themes": []
     },
-    "npm:pi-subagents"
+    "npm:pi-subagents",
+    "npm:pi-powerline-footer"
   ],
   "enabledModels": [
     "claude-*",

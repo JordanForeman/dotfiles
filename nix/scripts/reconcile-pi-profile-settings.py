@@ -27,6 +27,7 @@ DEFAULT_SHARED_PACKAGES: list[str | dict[str, Any]] = [
     "../agent/extensions/ui-modern.ts",
     PASCAL_PI_AGENT_PACKAGE,
     "npm:pi-subagents",
+    "npm:pi-powerline-footer",
 ]
 
 DEFAULT_SHARED_THEMES = ["../agent/themes"]

@@ -28,6 +28,7 @@ in
       themes = [ ];
     }
     "npm:pi-subagents"
+    "npm:pi-powerline-footer"
   ];
 
   programs.home-manager.enable = true;
