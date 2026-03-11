@@ -24,9 +24,12 @@
 
     # SQL TUI (uses its own nixpkgs pin for compatible Python deps)
     sqlit.url = "github:Maxteabag/sqlit";
+
+    # Zellij statusbar plugin
+    zjstatus.url = "github:dj95/zjstatus";
   };
 
-  outputs = inputs@{ self, nixpkgs, nix-darwin, home-manager, sqlit }:
+  outputs = inputs@{ self, nixpkgs, nix-darwin, home-manager, sqlit, zjstatus }:
   let
     # Supported systems
     supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
@@ -55,6 +58,7 @@
           home-manager.backupFileExtension = "backup";
           home-manager.extraSpecialArgs = {
             sqlit = sqlit.packages.aarch64-darwin.default;
+            zjstatus = zjstatus.packages.aarch64-darwin.default;
           };
           home-manager.users.jordan = {
             home = {
@@ -131,6 +135,7 @@
         pkgs = nixpkgs.legacyPackages.aarch64-darwin;
         extraSpecialArgs = {
           sqlit = sqlit.packages.aarch64-darwin.default;
+          zjstatus = zjstatus.packages.aarch64-darwin.default;
         };
         modules = [
           {
@@ -150,6 +155,7 @@
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
         extraSpecialArgs = {
           sqlit = sqlit.packages.x86_64-linux.default;
+          zjstatus = zjstatus.packages.x86_64-linux.default;
         };
         modules = [
           {
@@ -169,6 +175,7 @@
         pkgs = nixpkgs.legacyPackages.x86_64-linux;
         extraSpecialArgs = {
           sqlit = sqlit.packages.x86_64-linux.default;
+          zjstatus = zjstatus.packages.x86_64-linux.default;
         };
         modules = [
           {

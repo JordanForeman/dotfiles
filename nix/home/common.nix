@@ -1,4 +1,4 @@
-{ config, pkgs, lib, sqlit, ... }:
+{ config, pkgs, lib, sqlit, zjstatus, ... }:
 
 let
   pair-review-unwrapped = import ../pkgs/pair-review.nix { inherit pkgs; };
@@ -45,24 +45,23 @@ in
 
   xdg.enable = true;
 
+  # Keep these as repo-backed out-of-store symlinks to avoid /nix/store path churn in git.
+
   home.file.".aliases".source = ../../.aliases;
 
-  xdg.configFile."lazygit" = {
-    source = ../../.config/lazygit;
-    recursive = true;
-  };
+  xdg.configFile."lazygit".source = config.lib.file.mkOutOfStoreSymlink ../../.config/lazygit;
 
-  xdg.configFile."lazydocker" = {
-    source = ../../.config/lazydocker;
-    recursive = true;
-  };
+  xdg.configFile."lazydocker".source = config.lib.file.mkOutOfStoreSymlink ../../.config/lazydocker;
 
-  xdg.configFile."starship.toml".source = ../../.config/starship.toml;
+  xdg.configFile."starship.toml".source = config.lib.file.mkOutOfStoreSymlink ../../.config/starship.toml;
 
-  xdg.configFile."zellij" = {
-    source = ../../.config/zellij;
-    recursive = true;
-  };
+  # Split Zellij state so plugin binary is sourced from Nix package while config/layouts stay repo-tracked.
+  xdg.configFile."zellij/config.kdl".source = config.lib.file.mkOutOfStoreSymlink ../../.config/zellij/config.kdl;
+  xdg.configFile."zellij/layouts".source = config.lib.file.mkOutOfStoreSymlink ../../.config/zellij/layouts;
+  xdg.configFile."zellij/themes".source = config.lib.file.mkOutOfStoreSymlink ../../.config/zellij/themes;
+
+  # Keep plugin binary in Nix store (not tracked in git) for reproducible installs.
+  home.file.".config/zellij/plugins/zjstatus.wasm".source = "${zjstatus}/bin/zjstatus.wasm";
 
   # Default packages - can be overridden in specific configurations
   home.packages = with pkgs; [

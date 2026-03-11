@@ -1,1 +1,53 @@
-/nix/store/6sbcm9a5si1v5qmrm404hvh3x8j1j568-home-manager-files/.config/zellij/layouts/default.kdl
+layout {
+  default_tab_template {
+    pane size=1 borderless=true {
+      plugin location="file:~/.config/zellij/plugins/zjstatus.wasm" {
+        format_left   "#[fg=#89B4FA]#[fg=white,bg=#89B4FA,bold] #[fg=#89B4FA,bg=#363b46,bold] {session}#[fg=#363b46]"
+        format_center ""
+        format_right  "{tabs}"
+        format_space  ""
+
+        border_enabled  "false"
+        border_char     "─"
+        border_format   "#[fg=#6C7086]{char}"
+        border_position "top"
+
+        hide_frame_for_single_pane "false"
+
+        mode_normal  "#[bg=blue] "
+        mode_tmux    "#[bg=#ffc387] "
+
+        tab_active   "#[fg=#363b46]#[bg=#363b46,fg=#D8B61A]#[fg=#9399B2,bg=#363b46,bold,italic] {name}#[fg=#363b46] "
+        tab_normal   "#[fg=#363b46]#[bg=#363b46,fg=#2a2c23]#[fg=#9399B2,bg=#363b46,bold,italic] {name}#[fg=#363b46] "
+
+        datetime        "#[fg=#6C7086,bold] {format} "
+        datetime_format "%A, %d %b %Y %H:%M"
+        datetime_timezone "Europe/Berlin"
+      }
+    }
+    children
+    pane size=1 borderless=true {
+      plugin location="file:~/.config/zellij/plugins/zjstatus.wasm" {
+        format_left "{mode}"
+        format_center ""
+        format_right "{command_cwd} {command_git_branch}"
+        format_space ""
+
+        command_cwd_command     "bash -c pwd | sed \"s|$HOME|~|\""
+        command_cwd_format      "#[fg=#ee7eff]#[bg=#ee7eff,fg=white,bold] #[fg=#ee7eff,bg=#363b46] {stdout} #[fg=#363b46]"
+        command_cwd_interval    "10"
+        command_cwd_rendermode  "static"
+
+        command_git_branch_command     "git rev-parse --abbrev-ref HEAD"
+        command_git_branch_format      "#[fg=#aa37c1]#[bg=#aa37c1,fg=white] #[fg=#aa37c1,bg=#363b46] {stdout} #[fg=#363b46]"
+        command_git_branch_interval    "10"
+        command_git_branch_rendermode  "static"
+
+        mode_normal "#[fg=#54c153]#[bg=#54c153,fg=white] Unlocked#[fg=#54c153]"
+        mode_locked "#[fg=#D8B61A]#[bg=#D8B61A,fg=white] Locked#[fg=#D8B61A]"
+        mode_tab "#[fg=#37a4c1]#[bg=#37a4c1,fg=white]󰓩 Tab#[fg=#37a4c1]"
+        mode_pane "#[fg=#37a4c1]#[bg=#37a4c1,fg=white] Pane#[fg=#37a4c1]"
+      }
+    }
+  }
+}

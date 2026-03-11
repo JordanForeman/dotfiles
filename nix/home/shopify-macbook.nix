@@ -6,21 +6,14 @@
   home.file.".zshrc".source = ../../.zshrc;
 
   # Terminal configuration
-  xdg.configFile."ghostty" = {
-    source = ../../.config/ghostty;
-    recursive = true;
-  };
+  # Use out-of-store symlink sources so config targets don't become store-hash symlinks.
+  xdg.configFile."ghostty".source = config.lib.file.mkOutOfStoreSymlink ../../.config/ghostty;
 
   # AeroSpace + Sketchybar are macOS-only
-  xdg.configFile."aerospace" = {
-    source = ../../.config/aerospace;
-    recursive = true;
-  };
+  xdg.configFile."aerospace".source = config.lib.file.mkOutOfStoreSymlink ../../.config/aerospace;
 
-  xdg.configFile."sketchybar" = {
-    source = ../../.config/sketchybar;
-    recursive = true;
-  };
+  xdg.configFile."sketchybar".source = config.lib.file.mkOutOfStoreSymlink ../../.config/sketchybar;
+
 
   # Neovim - not managed by home-manager (edit directly in dotfiles)
   # Already symlinked via install script, avoids nix store hash churn
@@ -57,12 +50,6 @@
   '';
 
   home.file.".aliases".source = ../../.aliases;
-
-  # Zellij configuration
-  xdg.configFile."zellij" = {
-    source = ../../.config/zellij;
-    recursive = true;
-  };
 
   # Pi agent configuration (shareable base)
   # Note: Local-only content (secrets, Shopify MCP wrappers) stays in ~/.pi/agent/

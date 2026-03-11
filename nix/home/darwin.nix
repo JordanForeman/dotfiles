@@ -7,27 +7,18 @@
 
   home.file.".zshrc".source = ../../.zshrc;
 
-  xdg.configFile."ghostty" = {
-    source = ../../.config/ghostty;
-    recursive = true;
-  };
+  # Use out-of-store symlink sources so updates don't rewrite git-tracked /nix/store paths.
+
+  xdg.configFile."ghostty".source = config.lib.file.mkOutOfStoreSymlink ../../.config/ghostty;
 
   # AeroSpace + Sketchybar are macOS-only
-  xdg.configFile."aerospace" = {
-    source = ../../.config/aerospace;
-    recursive = true;
-  };
+  xdg.configFile."aerospace".source = config.lib.file.mkOutOfStoreSymlink ../../.config/aerospace;
 
-  xdg.configFile."sketchybar" = {
-    source = ../../.config/sketchybar;
-    recursive = true;
-  };
+
+  xdg.configFile."sketchybar".source = config.lib.file.mkOutOfStoreSymlink ../../.config/sketchybar;
 
   # Neovim configuration (reconciled)
-  xdg.configFile."nvim" = {
-    source = ../../.config/nvim;
-    recursive = true;
-  };
+  xdg.configFile."nvim".source = config.lib.file.mkOutOfStoreSymlink ../../.config/nvim;
 
   home.sessionVariables = {
     DOCKER_HOST = "unix://${config.home.homeDirectory}/.colima/default/docker.sock";
