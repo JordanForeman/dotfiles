@@ -1,5 +1,8 @@
 { config, pkgs, ... }:
 
+let
+  dotfiles = "${config.home.homeDirectory}/Developer/dotfiles";
+in
 {
   imports = [
     ../modules/git.nix
@@ -9,16 +12,16 @@
 
   # Use out-of-store symlink sources so updates don't rewrite git-tracked /nix/store paths.
 
-  xdg.configFile."ghostty".source = config.lib.file.mkOutOfStoreSymlink ../../.config/ghostty;
+  xdg.configFile."ghostty".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/ghostty";
 
   # AeroSpace + Sketchybar are macOS-only
-  xdg.configFile."aerospace".source = config.lib.file.mkOutOfStoreSymlink ../../.config/aerospace;
+  xdg.configFile."aerospace".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/aerospace";
 
 
-  xdg.configFile."sketchybar".source = config.lib.file.mkOutOfStoreSymlink ../../.config/sketchybar;
+  xdg.configFile."sketchybar".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/sketchybar";
 
   # Neovim configuration (reconciled)
-  xdg.configFile."nvim".source = config.lib.file.mkOutOfStoreSymlink ../../.config/nvim;
+  xdg.configFile."nvim".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/nvim";
 
   home.sessionVariables = {
     DOCKER_HOST = "unix://${config.home.homeDirectory}/.colima/default/docker.sock";
