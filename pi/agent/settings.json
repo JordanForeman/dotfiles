@@ -26,7 +26,8 @@
       "themes": []
     },
     "npm:pi-subagents",
-    "npm:pi-powerline-footer"
+    "npm:pi-powerline-footer",
+    "npm:pi-autoresearch"
   ],
   "enabledModels": [
     "claude-*",
