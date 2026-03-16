@@ -12,7 +12,8 @@ pi/agent/
 │   └── orchestrations/ # Orchestration JSON artifacts
 ├── prompts/            # Prompt templates
 ├── skills/             # Reusable skills
-├── extensions/         # Local shareable extensions (pi-ask, ui, etc.)
+├── extensions/         # Always-on local extensions (auto-discovered by pi)
+├── optional-extensions/ # Opt-in local extensions (loaded ad-hoc via `-e`)
 ├── themes/             # UI themes
 ├── settings.json       # Base template (packages are rendered via Nix `pi.extensions`)
 ├── keybindings.json
@@ -95,7 +96,8 @@ For shared behavior, edit inside this repo:
 - Agent definitions: `pi/agent/subagents/*.md`
 - Prompt templates: `pi/agent/prompts/*.md`
 - Skills: `pi/agent/skills/**`
-- Local extensions: `pi/agent/extensions/*.ts`
+- Always-on extensions: `pi/agent/extensions/**`
+- Optional extensions: `pi/agent/optional-extensions/**`
 - Themes: `pi/agent/themes/*.json`
 
 Then apply Home Manager for the target machine.

@@ -1,3 +1,4 @@
 alias ls="eza -la"
 alias cat=bat
 alias codi=code-insiders
+alias pigma='pi -e "$HOME/.pi/agent/optional-extensions/figma-labor" -e "$HOME/.pi/agent/optional-extensions/figma-mcp.ts"'

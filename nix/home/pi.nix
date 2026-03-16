@@ -15,6 +15,30 @@ let
       themes = config.pi.sharedThemes;
     }
   );
+
+  optionalExtensionsRoot = ../../pi/agent/optional-extensions;
+
+  optionalExtensionFiles = builtins.listToAttrs (
+    map
+      (name:
+        let
+          entryType = (builtins.readDir optionalExtensionsRoot)."${name}";
+          sourcePath = optionalExtensionsRoot + "/${name}";
+        in
+        {
+          name = ".pi/agent/optional-extensions/${name}";
+          value =
+            if entryType == "directory"
+            then {
+              source = sourcePath;
+              recursive = true;
+            }
+            else {
+              source = sourcePath;
+            };
+        })
+      config.pi.optionalExtensions
+  );
 in
 {
   options.pi = {
@@ -42,9 +66,22 @@ in
       default = [ "../agent/themes" ];
       description = "Themes ensured in ~/.pi/agent-*/settings.json during reconciliation.";
     };
+
+    optionalExtensions = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Optional local extensions to stage under ~/.pi/agent/optional-extensions.
+        These are not auto-discovered by pi and can be loaded ad-hoc with --extension.
+      '';
+    };
   };
 
-  config = {
+  config = lib.mkMerge [
+    {
+      home.file = optionalExtensionFiles;
+    }
+    {
     pi.profileSharedPackages = lib.mkDefault (
       [
         "../agent/extensions/theme-switcher.ts"
@@ -101,11 +138,7 @@ in
     home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
     home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
 
-    home.file.".pi/agent/extensions/figma-labor" = {
-      source = ../../pi/agent/extensions/figma-labor;
-      recursive = true;
-    };
-    home.file.".pi/agent/extensions/figma-mcp.ts".source = ../../pi/agent/extensions/figma-mcp.ts;
+    # Optional extensions are staged outside auto-discovery and loaded ad-hoc (e.g. via `pi -e ...`).
 
     home.file.".pi/agent/extensions/prompt-composer" = {
       source = ../../pi/agent/extensions/prompt-composer;
@@ -138,5 +171,6 @@ in
       source = ../../pi/agent/system-fragments;
       recursive = true;
     };
-  };
+    }
+  ];
 }

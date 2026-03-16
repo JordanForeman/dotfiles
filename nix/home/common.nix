@@ -31,6 +31,12 @@ in
     "npm:pi-powerline-footer"
   ];
 
+
+  pi.optionalExtensions = [
+    "figma-labor"
+    "figma-mcp.ts"
+  ];
+
   programs.home-manager.enable = true;
 
   # nixpkgs is pinned via flake; avoid release-mismatch warnings.
