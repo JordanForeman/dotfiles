@@ -64,6 +64,26 @@ Because `hashline` declares a transitive runtime dependency on `diff`, Home Mana
 /agents
 ```
 
+### Ralph loop workflow
+
+```bash
+# Initialize local loop artifacts (.pi/ralph/*)
+/ralph:init "Deliver scoped features with validation gates"
+
+# Plan next increment
+/ralph:plan "Prioritize one increment from .pi/ralph/plan.md"
+
+# Run one full planner->recon->implement->validate->historian chain
+/ralph:start "Implement top priority increment"
+
+# Observe/control lifecycle
+/ralph:status
+/ralph:pause
+/ralph:resume
+/ralph:stop
+/ralph:report
+```
+
 ### Tool-level usage
 
 ```json
@@ -97,6 +117,9 @@ For shared behavior, edit inside this repo:
 - Prompt templates: `pi/agent/prompts/*.md`
 - Skills: `pi/agent/skills/**`
 - Always-on extensions: `pi/agent/extensions/**`
+- Ralph loop extension: `pi/agent/extensions/ralph-loop.ts`
+- Ralph loop team: `pi/agent/subagents/ralph-*.md`, `pi/agent/subagents/ralph-loop.chain.md`
+- Ralph orchestration artifact: `pi/agent/subagents/orchestrations/ralph-loop.json`
 - Optional extensions: `pi/agent/optional-extensions/**`
 - Themes: `pi/agent/themes/*.json`
 

@@ -60,6 +60,26 @@ System prompt body here...
 /agents
 ```
 
+## Ralph loop team
+
+Files:
+- `ralph-planner.md`
+- `ralph-recon.md`
+- `ralph-implementer.md`
+- `ralph-validator.md`
+- `ralph-historian.md`
+- `ralph-loop.chain.md`
+
+Usage:
+
+```bash
+# One full loop increment
+/chain ralph-loop "Implement top priority item from .pi/ralph/plan.md"
+
+# Run a specific stage directly
+/run ralph-recon "Map existing implementation before code changes"
+```
+
 ## Orchestration JSON
 
 `pi/agent/subagents/orchestrations/*.json` stores orchestration artifacts in this repo.

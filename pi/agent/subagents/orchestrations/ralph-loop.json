@@ -1,0 +1,54 @@
+{
+  "name": "ralph-loop",
+  "description": "Subagent team for one Ralph loop increment with planning, recon, implementation, validation, and memory updates.",
+  "relation": "Execute one scoped backlog increment with strict backpressure and artifact updates.",
+  "scope": "both",
+  "confirmProjectSubagents": true,
+  "stages": [
+    {
+      "label": "plan",
+      "tasks": [
+        {
+          "subagent": "ralph-planner",
+          "task": "Plan one scoped increment for the parent task using .pi/ralph/plan.md and .pi/ralph/policy.json. Output acceptance criteria and validation gates."
+        }
+      ]
+    },
+    {
+      "label": "recon",
+      "tasks": [
+        {
+          "subagent": "ralph-recon",
+          "task": "Using the planning output below, verify existing implementations and identify precise files/tests for one increment.\n\n{previous}"
+        }
+      ]
+    },
+    {
+      "label": "implement",
+      "tasks": [
+        {
+          "subagent": "ralph-implementer",
+          "task": "Implement one increment only using plan/recon context below.\n\n{previous}"
+        }
+      ]
+    },
+    {
+      "label": "validate",
+      "tasks": [
+        {
+          "subagent": "ralph-validator",
+          "task": "Validate the implementation against required gates and return pass/fail with evidence.\n\n{previous}"
+        }
+      ]
+    },
+    {
+      "label": "historian",
+      "tasks": [
+        {
+          "subagent": "ralph-historian",
+          "task": "Update .pi/ralph/plan.md and .pi/ralph/runbook.md with durable outcomes from this loop.\n\n{previous}"
+        }
+      ]
+    }
+  ]
+}

@@ -86,6 +86,7 @@ in
       [
         "../agent/extensions/theme-switcher.ts"
         "../agent/extensions/pi-ask.ts"
+        "../agent/extensions/ralph-loop.ts"
       ]
       ++ config.pi.extensions
     );
@@ -137,6 +138,7 @@ in
     # Local shareable extensions are symlinked normally.
     home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
     home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
+    home.file.".pi/agent/extensions/ralph-loop.ts".source = ../../pi/agent/extensions/ralph-loop.ts;
 
     # Optional extensions are staged outside auto-discovery and loaded ad-hoc (e.g. via `pi -e ...`).
 
