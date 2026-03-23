@@ -30,6 +30,8 @@ DEFAULT_SHARED_PACKAGES: list[str | dict[str, Any]] = [
 ]
 
 DEFAULT_SHARED_THEMES = ["../agent/themes"]
+DEFAULT_SHARED_PROMPTS = ["../agent/prompts"]
+DEFAULT_SHARED_SKILLS = ["../agent/skills"]
 
 
 def load_shared_defaults(defaults_path: Path | None) -> tuple[list[Any], list[str]]:
@@ -39,12 +41,19 @@ def load_shared_defaults(defaults_path: Path | None) -> tuple[list[Any], list[st
             if isinstance(data, dict):
                 packages = data.get("packages")
                 themes = data.get("themes")
+                prompts = data.get("prompts")
+                skills = data.get("skills")
                 if isinstance(packages, list) and isinstance(themes, list):
-                    return packages, [t for t in themes if isinstance(t, str)]
+                    return (
+                        packages,
+                        [t for t in themes if isinstance(t, str)],
+                        [p for p in prompts if isinstance(p, str)] if isinstance(prompts, list) else [],
+                        [s for s in skills if isinstance(s, str)] if isinstance(skills, list) else []
+                    )
         except Exception:
             pass
 
-    return list(DEFAULT_SHARED_PACKAGES), list(DEFAULT_SHARED_THEMES)
+    return list(DEFAULT_SHARED_PACKAGES), list(DEFAULT_SHARED_THEMES), list(DEFAULT_SHARED_PROMPTS), list(DEFAULT_SHARED_SKILLS)
 
 
 def package_source(item: Any) -> str | None:
@@ -107,7 +116,7 @@ def main() -> int:
     if not root.exists() or not root.is_dir():
         return 0
 
-    shared_packages, shared_themes = load_shared_defaults(defaults_path)
+    shared_packages, shared_themes, shared_prompts, shared_skills = load_shared_defaults(defaults_path)
 
     for profile in root.iterdir():
         if not profile.is_dir() or not profile.name.startswith("agent-"):
@@ -148,6 +157,37 @@ def main() -> int:
                 themes.append(item)
                 changed = True
 
+        # Merge prompts
+        profile_prompts = data.get("prompts")
+        if not isinstance(profile_prompts, list):
+            profile_prompts = []
+            data["prompts"] = profile_prompts
+            changed = True
+        
+        for item in shared_prompts:
+            if item not in profile_prompts:
+                profile_prompts.append(item)
+                changed = True
+        
+        if "./prompts" not in profile_prompts:
+            profile_prompts.append("./prompts")
+            changed = True
+
+        # Merge skills
+        profile_skills = data.get("skills")
+        if not isinstance(profile_skills, list):
+            profile_skills = []
+            data["skills"] = profile_skills
+            changed = True
+        
+        for item in shared_skills:
+            if item not in profile_skills:
+                profile_skills.append(item)
+                changed = True
+        
+        if "./skills" not in profile_skills:
+            profile_skills.append("./skills")
+            changed = True
         if changed:
             settings_path.write_text(json.dumps(data, indent=2) + "\n")
 
