@@ -14,11 +14,8 @@ in
 
   xdg.configFile."ghostty".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/ghostty";
 
-  # AeroSpace + Sketchybar are macOS-only
+  # AeroSpace is macOS-only
   xdg.configFile."aerospace".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/aerospace";
-
-
-  xdg.configFile."sketchybar".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/sketchybar";
 
   # Neovim configuration (reconciled)
   xdg.configFile."nvim".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/nvim";

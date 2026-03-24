@@ -1,11 +1,6 @@
 # Place a copy of this config to ~/.aerospace.toml
 # After that, you can edit ~/.aerospace.toml to your liking
 
-# You can use it to add commands that run after AeroSpace startup.
-# Available commands : https://nikitabobko.github.io/AeroSpace/commands
-after-startup-command = [
-  'exec-and-forget sketchybar'
-]
 
 # Start AeroSpace at login
 start-at-login = true
@@ -39,10 +34,6 @@ on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
 # Also see: https://nikitabobko.github.io/AeroSpace/goodies#disable-hide-app
 automatically-unhide-macos-hidden-apps = false
 
-# Notify Sketchybar about workspace change
-exec-on-workspace-change = ['/bin/bash', '-c',
-    'sketchybar --trigger aerospace_workspace_change FOCUSED_WORKSPACE=$AEROSPACE_FOCUSED_WORKSPACE'
-]
 
 # Possible values: (qwerty|dvorak|colemak)
 # See https://nikitabobko.github.io/AeroSpace/guide#key-mapping
@@ -68,7 +59,7 @@ exec-on-workspace-change = ['/bin/bash', '-c',
     1 = 'DELL U2723QE'
     2 = 'G34WQC'
     3 = 'G34WQC'
-    4 = 'Built-in Retina Display'
+    4 = 'G34WQC'
     5 = 'Built-in Retina Display'
 
 # 'main' binding mode declaration

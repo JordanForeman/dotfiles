@@ -98,10 +98,6 @@
         brews = [
           "starship"
           "borders"
-          {
-            name = "sketchybar";
-            start_service = true;
-          }
         ];
         casks = [
           "visual-studio-code" "ghostty" "dbeaver-community"

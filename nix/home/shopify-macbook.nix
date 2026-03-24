@@ -12,10 +12,8 @@ in
   # Use out-of-store symlink sources so config targets don't become store-hash symlinks.
   xdg.configFile."ghostty".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/ghostty";
 
-  # AeroSpace + Sketchybar are macOS-only
+  # AeroSpace is macOS-only
   xdg.configFile."aerospace".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/aerospace";
-
-  xdg.configFile."sketchybar".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/sketchybar";
 
 
   # Neovim - not managed by home-manager (edit directly in dotfiles)
