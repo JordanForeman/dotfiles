@@ -1,7 +1,7 @@
 { config, pkgs, ... }:
 
 let
-  dotfiles = "${config.home.homeDirectory}/Developer/dotfiles";
+  dotfiles = "${config.home.homeDirectory}/.dotfiles";
 in
 {
   imports = [

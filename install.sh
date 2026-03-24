@@ -32,6 +32,21 @@ case "$OS" in
 esac
 
 echo "📋 Detected platform: $PLATFORM ($SYSTEM)"
+# Maintain a stable path for repo-backed out-of-store symlinks regardless of where
+# this repository is cloned on a given machine.
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+DOTFILES_LINK="$HOME/.dotfiles"
+
+echo "🔗 Ensuring ~/.dotfiles points at this checkout..."
+if [[ -L "$DOTFILES_LINK" ]] || [[ ! -e "$DOTFILES_LINK" ]]; then
+  ln -snf "$REPO_ROOT" "$DOTFILES_LINK"
+  echo "   ~/.dotfiles -> $REPO_ROOT"
+else
+  echo "❌ $DOTFILES_LINK already exists and is not a symlink"
+  echo "   Move it aside, then rerun ./install.sh"
+  exit 1
+fi
+echo ""
 
 # Platform-specific setup
 if [[ "$PLATFORM" == "darwin" ]]; then

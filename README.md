@@ -60,6 +60,7 @@ The script will:
 - detect OS + host style
 - build the correct flake target
 - apply configuration (`darwin-rebuild` or `home-manager switch`)
+- refresh the stable `~/.dotfiles` symlink used by out-of-store config links
 
 ### 4) Restart your terminal
 
@@ -72,6 +73,7 @@ Some shell/path changes require a new shell session.
 ### Edit config files directly
 
 Most app configs live in-repo and are symlinked/applied by Home Manager:
+The installer maintains `~/.dotfiles` as a stable pointer to the active checkout, so repo-backed config links work even when this repo lives in different directories on different machines.
 
 ```bash
 $EDITOR .zshrc
@@ -139,6 +141,7 @@ Do **not** edit machine-local runtime state in `~/.pi/agent` and expect it to be
 - **Flake can't see new files**: Nix flakes only include git-tracked files. Run `git add` for new files.
 - **`darwin-rebuild` not found**: ensure nix-darwin is installed/available in PATH on personal macOS.
 - **Home Manager command missing**: use `nix run home-manager/master -- <cmd>`.
+- **Broken repo-backed config symlinks**: rerun `./install.sh` (or update `~/.dotfiles`) so Home Manager points at the current checkout path.
 - **Unexpected shell behavior**: check local overrides in `~/.zshrc.local`.
 
 ---

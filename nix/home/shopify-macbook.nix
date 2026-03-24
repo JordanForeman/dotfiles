@@ -1,7 +1,7 @@
 { config, pkgs, lib, sqlit, ... }:
 
 let
-  dotfiles = "${config.home.homeDirectory}/Developer/dotfiles";
+  dotfiles = "${config.home.homeDirectory}/.dotfiles";
 in
 {
   # Shell configuration - use personal zshrc directly
