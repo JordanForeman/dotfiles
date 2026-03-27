@@ -177,10 +177,6 @@ in
       recursive = true;
     };
 
-    home.file.".pi/agent/system-fragments" = {
-      source = ../../pi/agent/system-fragments;
-      recursive = true;
-    };
     }
   ];
 }

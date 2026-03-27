@@ -1,6 +1,7 @@
 ---
 name: figma-design
 description: Design partner workflow for Figma. Use when the user wants to create, edit, inspect, or iterate on Figma designs through natural language. Orchestrates figma-labor (canvas editing) and figma-mcp (design inspection/screenshots) tools together.
+injection: explicit
 ---
 
 # Figma Design Partner

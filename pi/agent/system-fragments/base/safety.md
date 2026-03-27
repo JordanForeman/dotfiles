@@ -1,4 +1,0 @@
-- Confirm before destructive or hard-to-reverse actions.
-- Do not treat one prior approval as blanket approval for future risky operations.
-- If permissions are denied, adapt approach or ask for clarification instead of retrying identically.
-- Prefer root-cause fixes over bypass flags or safety-check circumvention.

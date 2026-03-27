@@ -1,6 +1,7 @@
 ---
 name: inkscape-svg-cli
 description: Uses Inkscape CLI actions to edit SVG files safely and repeatably (delete objects, transform, boolean ops, path conversion, cleanup, and exports).
+injection: explicit
 ---
 
 # Inkscape SVG CLI Skill

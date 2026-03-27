@@ -1,6 +1,7 @@
 ---
 name: google-workspace
 description: "Interact with Google Workspace (Gmail, Drive, Calendar, Docs, Sheets, Chat, Tasks, and more) via the `gws` CLI. Use when the user asks about email, calendar events, files in Drive, spreadsheets, documents, or any Google Workspace service."
+injection: explicit
 ---
 
 # Google Workspace Skill

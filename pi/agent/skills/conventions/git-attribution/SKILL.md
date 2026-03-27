@@ -1,6 +1,7 @@
 ---
 name: git-attribution
 description: Ensures all git operations are properly attributed to Jordan Foreman. Use this skill whenever making commits, creating PRs, or performing git operations.
+injection: explicit
 ---
 
 # Git Attribution Skill

@@ -7,6 +7,30 @@ import { InterceptorExtensionCore } from "../../extension-core/interceptor-exten
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+type InjectionType = "always" | "detect" | "classify" | "explicit";
+
+type DetectRules = {
+  files?: string[];
+  platform?: string;
+  dependencies?: string[];
+  mode?: "read-only";
+};
+
+type SkillEntry = {
+  /** Taxonomy category: conventions, guides, formats, standards */
+  category: string;
+  /** Skill name (matches directory name) */
+  name: string;
+  /** Human-readable description (classifier input for "classify" skills) */
+  description: string;
+  /** How the skill is delivered */
+  injection: InjectionType;
+  /** Detection rules (only for injection: detect) */
+  detect?: DetectRules;
+  /** Relative path from skills root to the SKILL.md */
+  relativePath: string;
+};
+
 type FragmentSelection = {
   relativePath: string;
   reason: string;
@@ -17,15 +41,6 @@ type DetectionContext = {
   platform: NodeJS.Platform;
   activeTools: string[];
   prompt: string;
-};
-
-type FragmentEntry = {
-  relativePath: string;
-  description: string;
-  trigger:
-    | { type: "always" }
-    | { type: "detect"; detect: (ctx: DetectionContext) => boolean }
-    | { type: "classify" };
 };
 
 type Composition = {
@@ -43,7 +58,7 @@ type Composition = {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_INJECTED_CHARS = 20_000;
-const FRAGMENT_CACHE = new Map<string, string>();
+const CONTENT_CACHE = new Map<string, string>();
 const CLASSIFIER_MODEL_CANDIDATES = [
   { provider: "anthropic", id: "claude-haiku-4-5" },
   { provider: "anthropic", id: "claude-3-5-haiku-latest" },
@@ -51,7 +66,7 @@ const CLASSIFIER_MODEL_CANDIDATES = [
 ];
 
 const extensionDir = path.dirname(fileURLToPath(import.meta.url));
-const fragmentsRoot = path.join(extensionDir, "..", "..", "system-fragments");
+const skillsRoot = path.join(extensionDir, "..", "..", "skills");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -88,244 +103,141 @@ function detectReadOnlyMode(activeTools: string[]): boolean {
   return !hasBash && !hasEdit && !hasWrite && !hasGitMutator;
 }
 
-// ── Fragment manifest ────────────────────────────────────────────────────────
-//
-// Each fragment has a trigger type:
-//   - "always": included on every turn (core guidance)
-//   - "detect": included when a static heuristic matches (cwd files, platform, tools)
-//   - "classify": included when a lightweight Haiku model determines relevance
-//
-// The classifier receives the description field for each "classify" fragment
-// and the user's prompt, then selects which fragments to inject.
+// ── SKILL.md frontmatter parsing ─────────────────────────────────────────────
 
-const FRAGMENT_MANIFEST: FragmentEntry[] = [
-  // ── Always-on ──────────────────────────────────────────────────────────
-  {
-    relativePath: "base/core.md",
-    description: "Core coding workflow guidance",
-    trigger: { type: "always" },
-  },
-  {
-    relativePath: "base/tool-usage.md",
-    description: "Tool selection policy",
-    trigger: { type: "always" },
-  },
-  {
-    relativePath: "base/safety.md",
-    description: "Safety and confirmation guidance",
-    trigger: { type: "always" },
-  },
-  {
-    relativePath: "tone/concise-output.md",
-    description: "Concise, polished output without filler",
-    trigger: { type: "always" },
-  },
-  {
-    relativePath: "workflow/engineering-focus.md",
-    description: "Interpret ambiguous requests as software engineering tasks",
-    trigger: { type: "always" },
-  },
+function parseFrontmatter(content: string): Record<string, unknown> | null {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return null;
 
-  // ── Detect: platform ───────────────────────────────────────────────────
-  {
-    relativePath: "os/macos.md",
-    description: "macOS-specific shell guidance",
-    trigger: { type: "detect", detect: (ctx) => ctx.platform === "darwin" },
-  },
-  {
-    relativePath: "os/linux.md",
-    description: "Linux-specific shell guidance",
-    trigger: { type: "detect", detect: (ctx) => ctx.platform === "linux" },
-  },
-  {
-    relativePath: "os/windows.md",
-    description: "Windows-specific shell guidance",
-    trigger: { type: "detect", detect: (ctx) => ctx.platform === "win32" },
-  },
+  const lines = match[1].split("\n");
+  const result: Record<string, unknown> = {};
+  let currentKey: string | null = null;
 
-  // ── Detect: repo ───────────────────────────────────────────────────────
-  {
-    relativePath: "repo/worktree.md",
-    description: "Git worktree conventions",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => fs.existsSync(path.join(ctx.cwd, ".git")),
-    },
-  },
-  {
-    relativePath: "repo/git-ops.md",
-    description: "Git commit and operation best practices",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => fs.existsSync(path.join(ctx.cwd, ".git")),
-    },
-  },
+  for (const line of lines) {
+    // Nested key under detect:
+    const indentedMatch = line.match(/^  (\w+):\s*(.*)/);
+    if (indentedMatch && currentKey === "detect") {
+      const nestedKey = indentedMatch[1];
+      const value = indentedMatch[2].trim();
+      if (!result.detect || typeof result.detect !== "object") {
+        result.detect = {};
+      }
+      (result.detect as Record<string, unknown>)[nestedKey] = parseYamlValue(value);
+      continue;
+    }
 
-  // ── Detect: tools/mode ─────────────────────────────────────────────────
-  {
-    relativePath: "mode/read-only.md",
-    description: "Read-only/planning mode guidance",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => detectReadOnlyMode(ctx.activeTools),
-    },
-  },
+    // Top-level key
+    const topMatch = line.match(/^(\w+):\s*(.*)/);
+    if (topMatch) {
+      currentKey = topMatch[1];
+      const value = topMatch[2].trim();
+      if (value === "" || value === undefined) {
+        // Object start (like "detect:")
+        result[currentKey] = {};
+      } else {
+        result[currentKey] = parseYamlValue(value);
+      }
+    }
+  }
 
-  // ── Detect: languages ──────────────────────────────────────────────────
-  {
-    relativePath: "lang/typescript.md",
-    description: "TypeScript/Node project guidance",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => hasAnyFile(ctx.cwd, ["package.json", "tsconfig.json"]),
-    },
-  },
-  {
-    relativePath: "lang/ruby.md",
-    description: "Ruby/Rails project guidance",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => hasAnyFile(ctx.cwd, ["Gemfile", ".ruby-version", "config/application.rb"]),
-    },
-  },
-  {
-    relativePath: "lang/go.md",
-    description: "Go project guidance",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => hasAnyFile(ctx.cwd, ["go.mod"]),
-    },
-  },
-  {
-    relativePath: "lang/python.md",
-    description: "Python project guidance",
-    trigger: {
-      type: "detect",
-      detect: (ctx) =>
-        hasAnyFile(ctx.cwd, [
-          "pyproject.toml",
-          "setup.py",
-          "setup.cfg",
-          "requirements.txt",
-          "Pipfile",
-          "poetry.lock",
-          ".python-version",
-        ]),
-    },
-  },
-  {
-    relativePath: "lang/rust.md",
-    description: "Rust project guidance",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => hasAnyFile(ctx.cwd, ["Cargo.toml"]),
-    },
-  },
-  {
-    relativePath: "lang/nix.md",
-    description: "Nix expression guidance",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => hasAnyFile(ctx.cwd, ["flake.nix", "default.nix", "shell.nix"]),
-    },
-  },
-  {
-    relativePath: "lang/frontend-aesthetics.md",
-    description: "Frontend design and aesthetics guidance for UI/visual work",
-    trigger: {
-      type: "detect",
-      detect: (ctx) => {
-        // Check for frontend config files
-        const configSignals = [
-          "tailwind.config.ts",
-          "tailwind.config.js",
-          "postcss.config.js",
-          "vite.config.ts",
-          "vite.config.js",
-          "next.config.ts",
-          "next.config.js",
-          "next.config.mjs",
-          "nuxt.config.ts",
-          "astro.config.ts",
-          "astro.config.mjs",
-        ];
-        if (hasAnyFile(ctx.cwd, configSignals)) return true;
+  return result;
+}
 
-        // Check for frontend framework deps
-        const pkg = loadPackageJson(ctx.cwd);
-        if (pkg) {
-          const frontendDeps = [
-            "react",
-            "next",
-            "vue",
-            "nuxt",
-            "svelte",
-            "@sveltejs/kit",
-            "solid-js",
-            "astro",
-            "@angular/core",
-            "preact",
-          ];
-          if (frontendDeps.some((dep) => hasDependency(pkg, dep))) return true;
+function parseYamlValue(raw: string): string | string[] {
+  // Inline array: [a, b, c]
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    const inner = raw.slice(1, -1);
+    return inner
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => {
+        // Strip quotes
+        if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+          return s.slice(1, -1);
         }
+        return s;
+      });
+  }
+  // Quoted string
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+    return raw.slice(1, -1);
+  }
+  return raw;
+}
 
-        return false;
-      },
-    },
-  },
+// ── Skill discovery ──────────────────────────────────────────────────────────
 
-  // ── Classify: workflow (Haiku-selected based on prompt) ────────────────
-  {
-    relativePath: "workflow/ambitious-tasks.md",
-    description: "User is attempting a large or complex task that spans many files or requires significant implementation work",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "workflow/avoid-over-engineering.md",
-    description: "User wants a focused, minimal change — a bug fix, small feature, or targeted edit without scope creep",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "workflow/minimize-file-creation.md",
-    description: "Task involves adding functionality where existing files could be extended rather than creating new ones",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "workflow/blocked-approach.md",
-    description: "User is reporting that something isn't working, a previous approach failed, or they're stuck on an error",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "workflow/careful-actions.md",
-    description: "Task involves potentially destructive, irreversible, or externally-visible operations (deleting, deploying, pushing, force operations)",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "tone/code-references.md",
-    description: "User is asking about or discussing specific code locations, functions, or files and would benefit from precise file:line references",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "security/code-security.md",
-    description: "Task involves writing code that handles user input, external data, authentication, authorization, or network operations",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "mode/debugging.md",
-    description: "User is debugging, investigating an error, trying to understand why something doesn't work, or reporting a bug",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "mode/refactoring.md",
-    description: "User is refactoring, restructuring, cleaning up, or reorganizing existing code without changing behavior",
-    trigger: { type: "classify" },
-  },
-  {
-    relativePath: "standards/clean-code.md",
-    description: "Task involves implementation or refactoring where code quality, clarity, and maintainability standards should be reinforced",
-    trigger: { type: "classify" },
-  },
-];
+const SKILL_CATEGORIES = ["conventions", "guides", "formats", "standards"];
+
+let discoveredSkills: SkillEntry[] | null = null;
+
+function discoverSkills(): SkillEntry[] {
+  if (discoveredSkills) return discoveredSkills;
+
+  const entries: SkillEntry[] = [];
+
+  for (const category of SKILL_CATEGORIES) {
+    const categoryPath = path.join(skillsRoot, category);
+    if (!fs.existsSync(categoryPath)) continue;
+
+    const dirs = fs.readdirSync(categoryPath, { withFileTypes: true });
+    for (const dir of dirs) {
+      if (!dir.isDirectory()) continue;
+
+      const skillMdPath = path.join(categoryPath, dir.name, "SKILL.md");
+      if (!fs.existsSync(skillMdPath)) continue;
+
+      const content = fs.readFileSync(skillMdPath, "utf8");
+      const frontmatter = parseFrontmatter(content);
+      if (!frontmatter) continue;
+
+      const injection = frontmatter.injection as InjectionType | undefined;
+      if (!injection || injection === "explicit") continue; // Pi handles explicit skills natively
+
+      const entry: SkillEntry = {
+        category,
+        name: (frontmatter.name as string) ?? dir.name,
+        description: (frontmatter.description as string) ?? "",
+        injection,
+        relativePath: path.join(category, dir.name, "SKILL.md"),
+      };
+
+      if (injection === "detect" && frontmatter.detect && typeof frontmatter.detect === "object") {
+        entry.detect = frontmatter.detect as DetectRules;
+      }
+
+      entries.push(entry);
+    }
+  }
+
+  discoveredSkills = entries;
+  return entries;
+}
+
+// ── Detection evaluation ─────────────────────────────────────────────────────
+
+function evaluateDetection(entry: SkillEntry, ctx: DetectionContext): boolean {
+  if (!entry.detect) return false;
+  const rules = entry.detect;
+
+  // Platform check
+  if (rules.platform && ctx.platform === rules.platform) return true;
+
+  // Mode check
+  if (rules.mode === "read-only" && detectReadOnlyMode(ctx.activeTools)) return true;
+
+  // File existence check
+  if (rules.files && rules.files.length > 0 && hasAnyFile(ctx.cwd, rules.files)) return true;
+
+  // Dependency check
+  if (rules.dependencies && rules.dependencies.length > 0) {
+    const pkg = loadPackageJson(ctx.cwd);
+    if (pkg && rules.dependencies.some((dep) => hasDependency(pkg, dep))) return true;
+  }
+
+  return false;
+}
 
 // ── Classifier ───────────────────────────────────────────────────────────────
 
@@ -335,31 +247,27 @@ You will receive a list of available fragments, each with an ID and a descriptio
 
 Respond with a JSON array of fragment IDs. If no fragments are relevant, respond with [].
 
-Example response: ["workflow/avoid-over-engineering.md", "mode/debugging.md"]`;
+Example response: ["conventions/careful-actions/SKILL.md", "guides/debugging/SKILL.md"]`;
 
 async function classifyPrompt(
   prompt: string,
-  classifyFragments: FragmentEntry[],
+  classifySkills: SkillEntry[],
   ctx: ExtensionContext,
 ): Promise<string[]> {
-  if (classifyFragments.length === 0) return [];
+  if (classifySkills.length === 0) return [];
 
-  // Find a suitable classifier model
   const model = CLASSIFIER_MODEL_CANDIDATES.reduce<ReturnType<typeof ctx.modelRegistry.find>>(
     (found, candidate) => found ?? ctx.modelRegistry.find(candidate.provider, candidate.id),
     undefined,
   );
 
-  if (!model) {
-    // Fallback: no classifier model available, skip classification
-    return [];
-  }
+  if (!model) return [];
 
   const apiKey = await ctx.modelRegistry.getApiKey(model);
   if (!apiKey) return [];
 
-  const fragmentList = classifyFragments
-    .map((f) => `- ${f.relativePath}: "${f.description}"`)
+  const fragmentList = classifySkills
+    .map((s) => `- ${s.relativePath}: "${s.description}"`)
     .join("\n");
 
   const userMessage = `Available fragments:\n${fragmentList}\n\nUser message:\n${prompt}`;
@@ -374,41 +282,38 @@ async function classifyPrompt(
       temperature: 0,
     });
 
-    // Extract text content from the response
     const text = result.content
       .filter((c): c is { type: "text"; text: string } => c.type === "text")
       .map((c) => c.text)
       .join("");
 
-    // Parse JSON array from response (handle markdown code fences)
     const jsonMatch = text.match(/\[[\s\S]*?\]/);
     if (!jsonMatch) return [];
 
     const parsed = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(parsed)) return [];
 
-    // Validate that returned IDs are in our manifest
-    const validIds = new Set(classifyFragments.map((f) => f.relativePath));
+    const validIds = new Set(classifySkills.map((s) => s.relativePath));
     return parsed.filter((id: unknown) => typeof id === "string" && validIds.has(id));
-  } catch (err) {
-    // Classification failure is non-fatal; fall back to no classification
+  } catch {
     return [];
   }
 }
 
-// ── Fragment loading ─────────────────────────────────────────────────────────
+// ── Skill content loading ────────────────────────────────────────────────────
 
-async function loadFragment(relativePath: string): Promise<string | undefined> {
-  if (FRAGMENT_CACHE.has(relativePath)) {
-    return FRAGMENT_CACHE.get(relativePath);
+async function loadSkillContent(relativePath: string): Promise<string | undefined> {
+  if (CONTENT_CACHE.has(relativePath)) {
+    return CONTENT_CACHE.get(relativePath);
   }
 
-  const fullPath = path.join(fragmentsRoot, relativePath);
+  const fullPath = path.join(skillsRoot, relativePath);
   try {
-    const content = await fs.promises.readFile(fullPath, "utf8");
-    const normalized = content.trim();
-    FRAGMENT_CACHE.set(relativePath, normalized);
-    return normalized;
+    const raw = await fs.promises.readFile(fullPath, "utf8");
+    // Strip frontmatter, return only the body
+    const body = raw.replace(/^---\n[\s\S]*?\n---\n*/, "").trim();
+    CONTENT_CACHE.set(relativePath, body);
+    return body;
   } catch {
     return undefined;
   }
@@ -420,33 +325,39 @@ async function collectSelections(
   dctx: DetectionContext,
   ctx: ExtensionContext,
 ): Promise<{ selections: FragmentSelection[]; classifierUsed: boolean; classifierMs: number }> {
+  const skills = discoverSkills();
   const selections: FragmentSelection[] = [];
   let classifierUsed = false;
   let classifierMs = 0;
 
-  // 1. Collect "always" and "detect" fragments
-  for (const entry of FRAGMENT_MANIFEST) {
-    if (entry.trigger.type === "always") {
-      selections.push({ relativePath: entry.relativePath, reason: entry.description });
-    } else if (entry.trigger.type === "detect" && entry.trigger.detect(dctx)) {
-      selections.push({ relativePath: entry.relativePath, reason: entry.description });
+  // 1. Always-on skills
+  for (const skill of skills) {
+    if (skill.injection === "always") {
+      selections.push({ relativePath: skill.relativePath, reason: skill.description });
     }
   }
 
-  // 2. Run classifier for "classify" fragments
-  const classifyFragments = FRAGMENT_MANIFEST.filter((e) => e.trigger.type === "classify");
-  if (classifyFragments.length > 0 && dctx.prompt.trim().length > 0) {
+  // 2. Detect skills — evaluate declarative rules
+  for (const skill of skills) {
+    if (skill.injection === "detect" && evaluateDetection(skill, dctx)) {
+      selections.push({ relativePath: skill.relativePath, reason: skill.description });
+    }
+  }
+
+  // 3. Classify skills — LLM selection
+  const classifySkills = skills.filter((s) => s.injection === "classify");
+  if (classifySkills.length > 0 && dctx.prompt.trim().length > 0) {
     const t0 = performance.now();
-    const classifiedIds = await classifyPrompt(dctx.prompt, classifyFragments, ctx);
+    const classifiedIds = await classifyPrompt(dctx.prompt, classifySkills, ctx);
     classifierMs = Math.round(performance.now() - t0);
     classifierUsed = true;
 
     for (const id of classifiedIds) {
-      const entry = classifyFragments.find((f) => f.relativePath === id);
-      if (entry) {
+      const skill = classifySkills.find((s) => s.relativePath === id);
+      if (skill) {
         selections.push({
-          relativePath: entry.relativePath,
-          reason: `Classifier: ${entry.description}`,
+          relativePath: skill.relativePath,
+          reason: `Classifier: ${skill.description}`,
         });
       }
     }
@@ -459,6 +370,7 @@ async function composeRuntimePrompt(
   dctx: DetectionContext,
   ctx: ExtensionContext,
 ): Promise<{ text: string; composition: Composition }> {
+  const skills = discoverSkills();
   const { selections: considered, classifierUsed, classifierMs } = await collectSelections(dctx, ctx);
   const selected: FragmentSelection[] = [];
   const blocks: string[] = [];
@@ -467,10 +379,10 @@ async function composeRuntimePrompt(
   let truncated = false;
 
   for (const candidate of considered) {
-    const fragment = await loadFragment(candidate.relativePath);
-    if (!fragment) continue;
+    const content = await loadSkillContent(candidate.relativePath);
+    if (!content) continue;
 
-    const block = `### ${candidate.relativePath}\n${fragment}`;
+    const block = `### ${candidate.relativePath}\n${content}`;
     const nextChars = currentChars + block.length;
 
     if (nextChars > MAX_INJECTED_CHARS) {
@@ -483,10 +395,10 @@ async function composeRuntimePrompt(
     currentChars = nextChars;
   }
 
-  const intro = "## Runtime guidance (composed)";
+  const intro = "## Runtime guidance (composed from skills)";
   const body = blocks.join("\n\n");
   const truncationNote = truncated
-    ? "\n\n_Note: additional fragments were available but omitted to control prompt size._"
+    ? "\n\n_Note: additional skills were available but omitted to control prompt size._"
     : "";
 
   const text = blocks.length > 0 ? `${intro}\n\n${body}${truncationNote}` : "";
@@ -498,7 +410,7 @@ async function composeRuntimePrompt(
       platform: dctx.platform,
       activeTools: dctx.activeTools,
       selected,
-      consideredCount: FRAGMENT_MANIFEST.length,
+      consideredCount: skills.length,
       truncated,
       injectedChars: currentChars,
       classifierUsed,
@@ -514,15 +426,15 @@ function formatCompositionSummary(c: Composition): string[] {
     `cwd: ${c.cwd}`,
     `platform: ${c.platform}`,
     `active tools: ${c.activeTools.join(", ") || "(none)"}`,
-    `fragments considered: ${c.consideredCount}`,
-    `fragments injected: ${c.selected.length}`,
+    `skills discovered: ${c.consideredCount}`,
+    `skills injected: ${c.selected.length}`,
     `prompt chars injected: ${c.injectedChars}`,
     `truncated: ${c.truncated ? "yes" : "no"}`,
   ];
 
   if (c.classifierUsed) {
     const classifiedCount = c.selected.filter((s) => s.reason.startsWith("Classifier:")).length;
-    lines.push(`classifier: ${classifiedCount} fragments selected (${c.classifierMs}ms)`);
+    lines.push(`classifier: ${classifiedCount} skills selected (${c.classifierMs}ms)`);
   } else {
     lines.push("classifier: not used");
   }
@@ -536,7 +448,7 @@ function registerPromptComposer(pi: ExtensionAPI) {
   let lastComposition: Composition | null = null;
 
   pi.registerCommand("prompt-debug", {
-    description: "Show active prompt-composer fragments for the current repo/tool mode",
+    description: "Show active prompt-composer skills for the current repo/tool mode",
     handler: async (args, ctx) => {
       if (!ctx.hasUI) return;
       if (!lastComposition) {
@@ -545,7 +457,7 @@ function registerPromptComposer(pi: ExtensionAPI) {
       }
 
       const showFull = (args ?? "").trim().toLowerCase() === "full";
-      const lines = ["prompt-composer", ...formatCompositionSummary(lastComposition), "", "selected fragments:"];
+      const lines = ["prompt-composer", ...formatCompositionSummary(lastComposition), "", "injected skills:"];
 
       if (lastComposition.selected.length === 0) {
         lines.push("- (none)");
@@ -553,7 +465,7 @@ function registerPromptComposer(pi: ExtensionAPI) {
         for (const selection of lastComposition.selected) {
           lines.push(`- ${selection.relativePath}: ${selection.reason}`);
           if (showFull) {
-            const content = FRAGMENT_CACHE.get(selection.relativePath) ?? "(not loaded)";
+            const content = CONTENT_CACHE.get(selection.relativePath) ?? "(not loaded)";
             lines.push(`  ${content.replace(/\n/g, "\n  ")}`);
           }
         }
@@ -600,7 +512,7 @@ class PromptComposerExtension extends InterceptorExtensionCore {
     super(pi, {
       id: "prompt-composer",
       name: "Prompt Composer",
-      summary: "Composed runtime prompt fragments",
+      summary: "Composed runtime prompt from skills",
     });
   }
 
