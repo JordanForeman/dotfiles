@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { completeSimple } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { InterceptorExtensionCore } from "../../extension-core/interceptor-extension-core";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -319,6 +320,11 @@ const FRAGMENT_MANIFEST: FragmentEntry[] = [
     description: "User is refactoring, restructuring, cleaning up, or reorganizing existing code without changing behavior",
     trigger: { type: "classify" },
   },
+  {
+    relativePath: "standards/clean-code.md",
+    description: "Task involves implementation or refactoring where code quality, clarity, and maintainability standards should be reinforced",
+    trigger: { type: "classify" },
+  },
 ];
 
 // ── Classifier ───────────────────────────────────────────────────────────────
@@ -526,7 +532,7 @@ function formatCompositionSummary(c: Composition): string[] {
 
 // ── Extension entry point ────────────────────────────────────────────────────
 
-export default function promptComposer(pi: ExtensionAPI) {
+function registerPromptComposer(pi: ExtensionAPI) {
   let lastComposition: Composition | null = null;
 
   pi.registerCommand("prompt-debug", {
@@ -587,4 +593,22 @@ export default function promptComposer(pi: ExtensionAPI) {
       systemPrompt: `${event.systemPrompt}\n\n${result.text}`,
     };
   });
+}
+
+class PromptComposerExtension extends InterceptorExtensionCore {
+  constructor(pi: ExtensionAPI) {
+    super(pi, {
+      id: "prompt-composer",
+      name: "Prompt Composer",
+      summary: "Composed runtime prompt fragments",
+    });
+  }
+
+  protected registerExtension(): void {
+    registerPromptComposer(this.pi);
+  }
+}
+
+export default function promptComposer(pi: ExtensionAPI) {
+  new PromptComposerExtension(pi).register();
 }

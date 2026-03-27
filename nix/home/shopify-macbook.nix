@@ -64,10 +64,6 @@ in
     recursive = true;
   };
 
-  home.file.".pi/agent/philosophy" = {
-    source = ../../pi/agent/philosophy;
-    recursive = true;
-  };
 
   home.file.".pi/agent/skills" = {
     source = ../../pi/agent/skills;

@@ -36,6 +36,8 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { IntegrationExtensionCore } from "../../extension-core/integration-extension-core";
+import { setExtensionStatus } from "../../extension-core/ui";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
@@ -122,11 +124,6 @@ function stopBridge() {
   }
 }
 
-// ## Footer status helper
-
-function footerLabel(plugin: string): string {
-  return plugin === "connected" ? "figma-labor ✓" : "figma-labor ○";
-}
 
 // ## Tool wrapper
 
@@ -163,7 +160,7 @@ async function runTool(command: string, params: Record<string, unknown>) {
 
 // ## Extension
 
-export default function (pi: ExtensionAPI) {
+function registerFigmaLabor(pi: ExtensionAPI) {
 
   // ## Lifecycle
 
@@ -174,7 +171,13 @@ export default function (pi: ExtensionAPI) {
     pollTimer = setInterval(async () => {
       const s = await bridgeStatus();
       cachedStatus = s;
-      ctx.ui.setStatus("figma-labor", s ? footerLabel(s.plugin) : "figma-labor ✗");
+      setExtensionStatus(
+        ctx,
+        "figma-labor",
+        "figma-labor",
+        !s ? "error" : s.plugin === "connected" ? "ready" : "idle",
+        s?.plugin
+      );
     }, 3000);
   }
 
@@ -187,7 +190,13 @@ export default function (pi: ExtensionAPI) {
     (async () => {
       const s = await bridgeStatus();
       cachedStatus = s;
-      ctx.ui.setStatus("figma-labor", s ? footerLabel(s.plugin) : "figma-labor ✗");
+      setExtensionStatus(
+        ctx,
+        "figma-labor",
+        "figma-labor",
+        !s ? "error" : s.plugin === "connected" ? "ready" : "idle",
+        s?.plugin
+      );
       if (s) startPolling(ctx);
     })();
   });
@@ -220,13 +229,19 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify("Starting figma-labor bridge...", "info");
       const ok = await startBridge();
       if (!ok) {
-        ctx.ui.setStatus("figma-labor", "figma-labor ✗");
+        setExtensionStatus(ctx, "figma-labor", "figma-labor", "error");
         ctx.ui.notify("Failed to start figma-labor bridge.\n\nMake sure bridge.js exists at:\n" + BRIDGE_BIN, "error");
         return;
       }
       const status = await bridgeStatus();
       cachedStatus = status;
-      ctx.ui.setStatus("figma-labor", footerLabel(status?.plugin ?? "disconnected"));
+      setExtensionStatus(
+        ctx,
+        "figma-labor",
+        "figma-labor",
+        status?.plugin === "connected" ? "ready" : "idle",
+        status?.plugin ?? "disconnected"
+      );
       ctx.ui.notify(`figma-labor bridge started.\nPlugin: ${status?.plugin ?? "disconnected"}`, "success");
       startPolling(ctx);
     },
@@ -238,7 +253,7 @@ export default function (pi: ExtensionAPI) {
       stopPolling();
       stopBridge();
       cachedStatus = null;
-      ctx.ui.setStatus("figma-labor", "figma-labor ✗");
+      setExtensionStatus(ctx, "figma-labor", "figma-labor", "error");
       ctx.ui.notify("figma-labor bridge stopped.", "info");
     },
   });
@@ -531,4 +546,22 @@ export default function (pi: ExtensionAPI) {
       }
     },
   });
+}
+
+class FigmaLaborExtension extends IntegrationExtensionCore {
+  constructor(pi: ExtensionAPI) {
+    super(pi, {
+      id: "figma-labor",
+      name: "Figma Labor",
+      summary: "Figma canvas manipulation bridge",
+    });
+  }
+
+  protected registerExtension(): void {
+    registerFigmaLabor(this.pi);
+  }
+}
+
+export default function figmaLabor(pi: ExtensionAPI) {
+  new FigmaLaborExtension(pi).register();
 }

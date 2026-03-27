@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { WorkflowExtensionCore } from "../extension-core/workflow-extension-core";
 
 type RalphPhase = "uninitialized" | "idle" | "planning" | "running" | "paused" | "stopped";
 
@@ -340,7 +341,7 @@ function registerRalphCommand(
   }
 }
 
-export default function ralphLoop(pi: ExtensionAPI) {
+function registerRalphLoop(pi: ExtensionAPI) {
   registerRalphCommand(pi, "ralph:init", "Initialize Ralph loop policy and state files", async (args, ctx) => {
     const parsed = stripAllowMainFlag(args);
     if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
@@ -662,4 +663,22 @@ export default function ralphLoop(pi: ExtensionAPI) {
 
     ctx.ui.notify(`Ralph report written: ${path.relative(ctx.cwd, reportPath)}`, "success");
   });
+}
+
+class RalphLoopExtension extends WorkflowExtensionCore {
+  constructor(pi: ExtensionAPI) {
+    super(pi, {
+      id: "ralph-loop",
+      name: "Ralph Loop",
+      summary: "Stateful iterative execution workflow",
+    });
+  }
+
+  protected registerExtension(): void {
+    registerRalphLoop(this.pi);
+  }
+}
+
+export default function ralphLoop(pi: ExtensionAPI) {
+  new RalphLoopExtension(pi).register();
 }

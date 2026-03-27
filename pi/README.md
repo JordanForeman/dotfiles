@@ -10,10 +10,20 @@ pi/agent/
 │   ├── *.md            # Agent specs (YAML frontmatter + prompt body)
 │   ├── *.chain.md      # Optional reusable chains for pi-subagents
 │   └── orchestrations/ # Orchestration JSON artifacts
-├── prompts/            # Prompt templates
-├── skills/             # Reusable skills
-├── extensions/         # Always-on local extensions (auto-discovered by pi)
+├── prompts/
+│   ├── guides/         # Method/process templates
+│   ├── conventions/    # Policy/rule templates
+│   ├── formats/        # Structured output templates
+│   └── standards/      # Quality/taste templates
+├── skills/
+│   ├── guides/         # Methodology skills
+│   ├── conventions/    # Rules and conventions
+│   ├── formats/        # Structured operation skills
+│   └── standards/      # Opinionated quality bar skills
+├── extension-core/      # Shared extension base classes + UI helpers
+├── extensions/          # Always-on local extensions (auto-discovered by pi)
 ├── optional-extensions/ # Opt-in local extensions (loaded ad-hoc via `-e`)
+├── system-fragments/   # Runtime guidance fragments consumed by prompt-composer
 ├── themes/             # UI themes
 ├── settings.json       # Base template (packages are rendered via Nix `pi.extensions`)
 ├── keybindings.json
@@ -115,16 +125,48 @@ Because `hashline` declares a transitive runtime dependency on `diff`, Home Mana
 For shared behavior, edit inside this repo:
 
 - Agent definitions: `pi/agent/subagents/*.md`
-- Prompt templates: `pi/agent/prompts/*.md`
-- Skills: `pi/agent/skills/**`
+- Prompt templates: `pi/agent/prompts/{guides,conventions,formats,standards}/*.md`
+- Skills: `pi/agent/skills/{guides,conventions,formats,standards}/**/SKILL.md`
+- Extension cores and shared helpers: `pi/agent/extension-core/**`
 - Always-on extensions: `pi/agent/extensions/**`
 - Ralph loop extension: `pi/agent/extensions/ralph-loop.ts`
 - Ralph loop team: `pi/agent/subagents/ralph-*.md`, `pi/agent/subagents/ralph-loop.chain.md`
 - Ralph orchestration artifact: `pi/agent/subagents/orchestrations/ralph-loop.json`
 - Optional extensions: `pi/agent/optional-extensions/**`
 - Themes: `pi/agent/themes/*.json`
+- Runtime guidance fragments: `pi/agent/system-fragments/**` (including standards injected by `prompt-composer`)
 
 Then apply Home Manager for the target machine.
+
+## Taxonomy Conventions
+
+Pi asset taxonomy is enforced structurally instead of a central registry.
+
+- Prompts are categorized by directory:
+  - `pi/agent/prompts/guides`
+  - `pi/agent/prompts/conventions`
+  - `pi/agent/prompts/formats`
+  - `pi/agent/prompts/standards`
+- Skills are categorized by directory:
+  - `pi/agent/skills/guides`
+  - `pi/agent/skills/conventions`
+  - `pi/agent/skills/formats`
+  - `pi/agent/skills/standards`
+- Extensions use inheritance-based taxonomy via `pi/agent/extension-core`:
+  - `GuardianExtensionCore`
+  - `InterceptorExtensionCore`
+  - `WorkflowExtensionCore`
+  - `WidgetExtensionCore`
+  - `IntegrationExtensionCore`
+- Runtime guidance standards are encoded as system fragments (for `prompt-composer`), e.g. `pi/agent/system-fragments/standards/*`
+
+Validate taxonomy structure with:
+
+```bash
+node pi/agent/scripts/validate-taxonomy.mjs
+```
+
+Each extension should be implemented as a thin adapter over shared core behavior so UI patterns and lifecycle handling stay consistent over time.
 
 ## Troubleshooting
 

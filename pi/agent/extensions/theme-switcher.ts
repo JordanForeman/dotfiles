@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { WidgetExtensionCore } from "../extension-core/widget-extension-core";
 import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 import type { AutocompleteItem } from "@mariozechner/pi-tui";
 
@@ -140,7 +141,7 @@ function usage(): string {
   ].join("\n");
 }
 
-export default function themeSwitcher(pi: ExtensionAPI) {
+function registerThemeSwitcher(pi: ExtensionAPI) {
   pi.registerCommand("theme", {
     description: "Switch Pi themes at runtime",
     getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
@@ -247,4 +248,22 @@ export default function themeSwitcher(pi: ExtensionAPI) {
       switchTheme(ctx, exactMatch);
     },
   });
+}
+
+class ThemeSwitcherExtension extends WidgetExtensionCore {
+  constructor(pi: ExtensionAPI) {
+    super(pi, {
+      id: "theme-switcher",
+      name: "Theme Switcher",
+      summary: "Runtime theme widget and controls",
+    });
+  }
+
+  protected registerExtension(): void {
+    registerThemeSwitcher(this.pi);
+  }
+}
+
+export default function themeSwitcher(pi: ExtensionAPI) {
+  new ThemeSwitcherExtension(pi).register();
 }

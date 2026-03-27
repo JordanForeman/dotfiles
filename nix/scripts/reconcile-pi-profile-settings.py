@@ -30,8 +30,8 @@ DEFAULT_SHARED_PACKAGES: list[str | dict[str, Any]] = [
 ]
 
 DEFAULT_SHARED_THEMES = ["../agent/themes"]
-DEFAULT_SHARED_PROMPTS = ["../agent/prompts"]
-DEFAULT_SHARED_SKILLS = ["../agent/skills"]
+DEFAULT_SHARED_PROMPTS = ["../agent/prompts/guides", "../agent/prompts/conventions", "../agent/prompts/formats", "../agent/prompts/standards"]
+DEFAULT_SHARED_SKILLS = ["../agent/skills/guides", "../agent/skills/conventions", "../agent/skills/formats", "../agent/skills/standards"]
 
 
 def load_shared_defaults(defaults_path: Path | None) -> tuple[list[Any], list[str]]:
@@ -47,8 +47,8 @@ def load_shared_defaults(defaults_path: Path | None) -> tuple[list[Any], list[st
                     return (
                         packages,
                         [t for t in themes if isinstance(t, str)],
-                        [p for p in prompts if isinstance(p, str)] if isinstance(prompts, list) else [],
-                        [s for s in skills if isinstance(s, str)] if isinstance(skills, list) else []
+                        [p for p in prompts if isinstance(p, str)] if isinstance(prompts, list) else list(DEFAULT_SHARED_PROMPTS),
+                        [s for s in skills if isinstance(s, str)] if isinstance(skills, list) else list(DEFAULT_SHARED_SKILLS)
                     )
         except Exception:
             pass

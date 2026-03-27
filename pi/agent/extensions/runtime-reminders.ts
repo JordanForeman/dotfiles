@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { InterceptorExtensionCore } from "../extension-core/interceptor-extension-core";
 
 const COMPLEX_PROMPT_KEYWORDS = [
   "implement",
@@ -86,7 +87,7 @@ function shouldDefaultToDelegation(prompt: string): boolean {
   return looksLikeExecutionObjective(prompt) || isComplexPrompt(prompt);
 }
 
-export default function runtimeReminders(pi: ExtensionAPI) {
+function registerRuntimeReminders(pi: ExtensionAPI) {
   let turnCount = 0;
 
   let pendingPermissionReminder = false;
@@ -169,4 +170,22 @@ export default function runtimeReminders(pi: ExtensionAPI) {
       systemPrompt: `${event.systemPrompt}\n\n${reminderText}`,
     };
   });
+}
+
+class RuntimeRemindersExtension extends InterceptorExtensionCore {
+  constructor(pi: ExtensionAPI) {
+    super(pi, {
+      id: "runtime-reminders",
+      name: "Runtime Reminders",
+      summary: "Silent runtime behavior reminders",
+    });
+  }
+
+  protected registerExtension(): void {
+    registerRuntimeReminders(this.pi);
+  }
+}
+
+export default function runtimeReminders(pi: ExtensionAPI) {
+  new RuntimeRemindersExtension(pi).register();
 }

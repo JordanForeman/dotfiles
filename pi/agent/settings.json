@@ -35,9 +35,15 @@
     "gemini-2*"
   ],
   "prompts": [
-    "../agent/prompts"
+    "../agent/prompts/guides",
+    "../agent/prompts/conventions",
+    "../agent/prompts/formats",
+    "../agent/prompts/standards"
   ],
   "skills": [
-    "../agent/skills"
+    "../agent/skills/guides",
+    "../agent/skills/conventions",
+    "../agent/skills/formats",
+    "../agent/skills/standards"
   ]
 }

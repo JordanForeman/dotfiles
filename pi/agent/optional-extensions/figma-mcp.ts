@@ -10,7 +10,9 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { IntegrationExtensionCore } from "../extension-core/integration-extension-core";
 import { Type, type TSchema } from "@sinclair/typebox";
+import { setExtensionStatus } from "../extension-core/ui";
 
 const MCP_URL = `http://127.0.0.1:${process.env.FIGMA_MCP_PORT ?? "3845"}/mcp`;
 const MAX_OUTPUT_BYTES = 50 * 1024;
@@ -227,7 +229,7 @@ function registerMcpTools(pi: ExtensionAPI, tools: McpTool[]) {
 
 // ## Extension
 
-export default function (pi: ExtensionAPI) {
+function registerFigmaMcp(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     // Fire-and-forget — don't block startup when Figma is closed
@@ -236,17 +238,17 @@ export default function (pi: ExtensionAPI) {
       const ok = await initialize(signal);
       if (!ok) {
         connected = false;
-        ctx.ui.setStatus("figma", "figma ✗");
+        setExtensionStatus(ctx, "figma", "figma", "error");
         return;
       }
       try {
         const tools = await listTools(signal);
         connected = true;
-        ctx.ui.setStatus("figma", "figma ✓");
+        setExtensionStatus(ctx, "figma", "figma", "ready");
         registerMcpTools(pi, tools);
       } catch {
         connected = false;
-        ctx.ui.setStatus("figma", "figma ✗");
+        setExtensionStatus(ctx, "figma", "figma", "error");
       }
     })();
   });
@@ -287,4 +289,22 @@ Use these tools for **design inspection and code generation** (Dev Mode, read-on
       );
     },
   });
+}
+
+class FigmaMcpExtension extends IntegrationExtensionCore {
+  constructor(pi: ExtensionAPI) {
+    super(pi, {
+      id: "figma-mcp",
+      name: "Figma MCP",
+      summary: "Figma desktop MCP integration",
+    });
+  }
+
+  protected registerExtension(): void {
+    registerFigmaMcp(this.pi);
+  }
+}
+
+export default function figmaMcp(pi: ExtensionAPI) {
+  new FigmaMcpExtension(pi).register();
 }

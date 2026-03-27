@@ -1,5 +1,6 @@
 // Graciously borrowed from: https://github.com/Soleone/pi-ext/blob/3107c4fca55742577177db96c7cb9e817211b49f/pi-ask.ts
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent"
+import { GuardianExtensionCore } from "../extension-core/guardian-extension-core"
 import { CURSOR_MARKER, Key, Text, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui"
 import { Type } from "@sinclair/typebox"
 
@@ -502,7 +503,7 @@ function registerAskTool(pi: ExtensionAPI, name: string, label: string) {
   })
 }
 
-export default function piAsk(pi: ExtensionAPI) {
+function registerPiAsk(pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
     return { systemPrompt: buildSystemPrompt(event.systemPrompt) }
   })
@@ -537,4 +538,22 @@ export default function piAsk(pi: ExtensionAPI) {
   })
 
   registerAskTool(pi, "ask_user", "Ask User")
+}
+
+class PiAskExtension extends GuardianExtensionCore {
+  constructor(pi: ExtensionAPI) {
+    super(pi, {
+      id: "pi-ask",
+      name: "Pi Ask",
+      summary: "Interactive multiple-choice questioning guardrail",
+    })
+  }
+
+  protected registerExtension(): void {
+    registerPiAsk(this.pi)
+  }
+}
+
+export default function piAsk(pi: ExtensionAPI) {
+  new PiAskExtension(pi).register()
 }

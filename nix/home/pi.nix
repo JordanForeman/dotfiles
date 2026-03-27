@@ -13,6 +13,8 @@ let
     builtins.toJSON {
       packages = config.pi.profileSharedPackages;
       themes = config.pi.sharedThemes;
+      prompts = settingsTemplate.prompts or [ ];
+      skills = settingsTemplate.skills or [ ];
     }
   );
 
@@ -140,8 +142,13 @@ in
     home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
     home.file.".pi/agent/extensions/ralph-loop.ts".source = ../../pi/agent/extensions/ralph-loop.ts;
     home.file.".pi/agent/extensions/linear.ts".source = ../../pi/agent/extensions/linear.ts;
+    home.file.".pi/agent/extension-core" = {
+      source = ../../pi/agent/extension-core;
+      recursive = true;
+    };
 
     # Optional extensions are staged outside auto-discovery and loaded ad-hoc (e.g. via `pi -e ...`).
+    # Shared extension base classes are synced separately in ~/.pi/agent/extension-core.
 
     home.file.".pi/agent/extensions/prompt-composer" = {
       source = ../../pi/agent/extensions/prompt-composer;
