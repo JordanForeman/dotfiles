@@ -1,21 +1,15 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { parseFrontmatter } from "../../scripts/lib/frontmatter.mjs";
 
 const SCRIPT_DIR = path.dirname(new URL(import.meta.url).pathname);
 const SUBAGENTS_DIR = path.resolve(SCRIPT_DIR, "..");
 
-function parseFrontmatter(markdown) {
-  const match = markdown.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (!match) return "";
-  return match[1] || "";
-}
-
-function parseTools(frontmatter) {
-  const match = frontmatter.match(/^tools:\s*(.+)$/m);
-  if (!match) return [];
-
-  return match[1]
+function parseTools(fm) {
+  const raw = fm?.tools;
+  if (!raw || typeof raw !== "string") return [];
+  return raw
     .split(/[\s,]+/)
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
@@ -50,7 +44,7 @@ function lint({ strict = false } = {}) {
     const frontmatter = parseFrontmatter(raw);
 
     // Ignore markdown files that are not subagent definitions (e.g. README.md).
-    if (!frontmatter || !/^name:\s*.+$/m.test(frontmatter)) continue;
+    if (!frontmatter || !frontmatter.name) continue;
 
     const tools = parseTools(frontmatter);
 

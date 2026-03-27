@@ -1,6 +1,6 @@
 # Dotfiles Repository
 
-This repository manages Jordan’s cross-machine development environment using **nix-darwin** + **Home Manager**, plus app configs and Pi agent configuration.
+This repository manages Jordan's cross-machine development environment using **nix-darwin** + **Home Manager**, plus app configs and Pi agent configuration.
 
 ## Primary Goal
 
@@ -23,14 +23,16 @@ dotfiles/
 ├── .config/                  # App configs (nvim, ghostty, zellij, etc.)
 ├── .gitconfig/.zshrc/.aliases
 ├── pi/                       # Version-controlled Pi config source
-│   ├── README.md
+│   ├── README.md             # Infrastructure: syncing, inheritance, troubleshooting
 │   └── agent/
 │       ├── subagents/           # Agent defs (synced to ~/.pi/agent/agents)
 │       ├── extensions/
+│       │   └── workflows/       # Workflow extensions (TDD, triage, etc.)
+│       ├── extension-core/      # Shared base classes + workflow engine
 │       ├── prompts/
 │       ├── skills/
 │       └── themes/
-└── AGENTS.md
+└── AGENTS.md                 # ← You are here. Single source of truth.
 ```
 
 ## Editing Rules
@@ -40,6 +42,30 @@ dotfiles/
 3. Do not commit generated artifacts (`result`, backups, `node_modules`, etc.).
 4. For Pi-related changes, edit `pi/` in this repo, **not** `~/.pi/` directly.
 5. Avoid unrelated refactors while touching config files.
+
+## Session Behavior
+
+These rules apply to all Pi sessions in this repo:
+
+- Prefer **small, safe, incremental changes**.
+- Ask before running destructive commands (`rm`, `sudo`, rewriting history, large overwrites).
+- When editing files, preserve existing style and conventions.
+- Prefer `rg`/`fd`/`eza` for search/listing.
+- Be concise and information-dense in output.
+- Use markdown with code fences for code.
+- When suggesting commands, show them in a single copy/pasteable block.
+
+### Subagent delegation
+
+- Use specialized subagents proactively when a task aligns with one.
+- For multi-phase requests, prefer workflow extensions or delegated execution through the `subagent` tool.
+- Execution modes:
+  - single specialist: `/run <agent> <task>` or `{ agent, task }`
+  - sequential handoff: `/chain ...` or `{ chain: [...] }`
+  - independent parallel tracks: `/parallel ...` or `{ tasks: [...] }`
+- Use `/agents` to inspect, create, or adjust agent definitions.
+- When asked to perform **git operations**, delegate to the `git-ops` subagent.
+- If the request involves destructive git actions, require explicit confirmation.
 
 ## Task-Specific Guidance
 
@@ -83,31 +109,37 @@ For tools like Neovim, Ghostty, Zellij, Git, Zsh:
 Pi is one part of the repo; keep it isolated to `pi/`:
 - Agents (source): `pi/agent/subagents/`
 - Optional chain files: `pi/agent/subagents/*.chain.md`
-- Orchestration JSON: `pi/agent/subagents/orchestrations/`
+- Workflow extensions: `pi/agent/extensions/workflows/`
 - Extensions: `pi/agent/extensions/`
+- Extension core + workflow engine: `pi/agent/extension-core/`
 - Skills: `pi/agent/skills/`
 - Prompts: `pi/agent/prompts/`
 - Themes: `pi/agent/themes/`
 
-If changing Pi architecture/docs, also update:
-- `pi/README.md`
-- any relevant README files under `pi/agent/`
+If changing Pi architecture/docs, also update this file and `pi/README.md`.
 
-### The Prompt → Subagent → Skill Hierarchy
+---
 
-Pi's agent system has three layers that form a natural hierarchy:
+## The Prompt → Workflow → Subagent → Skill Hierarchy
+
+Pi's agent system has four layers that form a natural hierarchy:
 
 ```
-Prompts (Intent)       "What should happen"    /review, /plan, /quick-pr
+Prompts (Intent)       "What should happen"    /tdd, /triage, /review, /plan
   │
-Subagents (Execution)  "Who does it"           pr-triage, architect, git-ops
+Workflows (Lifecycle)  "How it's coordinated"  extensions/workflows/tdd.ts, triage.ts
+  │
+Subagents (Execution)  "Who does it"           testing-reviewer, builder, architect
   │
 Skills (Knowledge)     "How to do it well"     safety, debugging, clean-code
 ```
 
-- **Prompts** are user-facing workflow triggers. They declare which subagents they orchestrate.
-- **Subagents** are isolated specialists that execute focused tasks within a workflow.
+- **Prompts** are user-facing workflow triggers. They declare which subagents or workflows they invoke.
+- **Workflows** are lifecycle-managed coordination patterns. They use the shared `WorkflowEngine` to manage phases, dispatch subagents, track progress via the UI, and accumulate context between phases. The engine abstracts the subagent execution layer (currently `pi-subagents`) so workflow definitions are pure configuration.
+- **Subagents** are isolated specialists that execute focused tasks. They don't know about workflows — they receive a task and execute it.
 - **Skills** are contextual knowledge injected into any agent via the prompt-composer extension.
+
+---
 
 ### 4) Prompts
 
@@ -125,8 +157,8 @@ Each prompt is a markdown file with YAML frontmatter:
 ```yaml
 ---
 description: What this prompt does
-workflow: orchestration-name    # optional: links to subagents/orchestrations/*.json
-subagents: [agent-a, agent-b]   # optional: subagents this prompt may invoke
+workflow: tdd                      # optional: links to a workflow extension command
+subagents: [agent-a, agent-b]      # optional: subagents this prompt may invoke (validated)
 ---
 
 Prompt body with workflow instructions.
@@ -134,7 +166,98 @@ Prompt body with workflow instructions.
 
 Prompts should NOT use skills' pedagogical categories (`guides/conventions/formats/standards`). The validator guards against this.
 
-### 5) Skills
+### 5) Workflow Extensions
+
+Workflow extensions live in `pi/agent/extensions/workflows/` and manage multi-phase, lifecycle-aware coordination. They use the shared `WorkflowEngine` from `pi/agent/extension-core/workflow-engine.ts`.
+
+**Execution model** (hybrid engine + LLM):
+- The engine manages phase state, transitions, UI status, and context accumulation
+- The LLM executes phases by calling the `subagent` tool as directed by engine-injected instructions
+- The engine detects phase completion via `tool_execution_end` events and advances the workflow
+
+**Phase execution modes:**
+- `sequential` — one subagent at a time (TDD: red → green → refactor)
+- `parallel` — multiple subagents simultaneously (triage: code + logs + data in parallel)
+
+**Transition rules:**
+- `advance` — always proceed to the next phase
+- `conditional` — evaluate results and decide the next phase (or end)
+- `loop` — repeat the current phase until a predicate is satisfied
+
+**Task template placeholders:**
+- `{input}` — original user input
+- `{context}` — formatted accumulated findings from all completed phases
+- `{phase:<id>}` — output from a specific completed phase
+
+**Creating a new workflow:**
+
+```typescript
+// 1. Define the workflow — pure configuration
+const MY_WORKFLOW: WorkflowDefinition = {
+  id: "my-workflow",
+  name: "My Workflow",
+  description: "What this workflow does",
+  phases: [
+    {
+      id: "phase-one",
+      label: "📋 First phase",
+      execution: "sequential",        // or "parallel"
+      tasks: [{
+        agent: "some-subagent",        // must exist in pi/agent/subagents/
+        task: "Do the thing for: {input}",
+      }],
+      transition: { type: "advance" }, // or "conditional" or "loop"
+    },
+  ],
+};
+
+// 2. Create the extension class
+class MyWorkflowExtension extends WorkflowExtensionCore {
+  constructor(pi: ExtensionAPI) {
+    super(pi, { id: "my-workflow", name: "My Workflow", summary: "Short summary" });
+  }
+
+  protected registerExtension(): void {
+    const engine = new WorkflowEngine(this.pi, MY_WORKFLOW);
+    this.pi.registerCommand("my-workflow", {
+      description: "Start my workflow",
+      handler: async (args, ctx) => { engine.start(args.trim(), ctx); },
+    });
+  }
+}
+
+// 3. Export the factory
+export default function myWorkflow(pi: ExtensionAPI) {
+  new MyWorkflowExtension(pi).register();
+}
+```
+
+See `pi/agent/extensions/workflows/tdd.ts` (sequential) and `triage.ts` (parallel + conditional) as examples.
+
+Do NOT create orchestration JSON files — this is a legacy concept. The validator guards against it.
+
+### 6) Subagents
+
+Subagent definitions live in `pi/agent/subagents/*.md`. They are markdown files with YAML frontmatter consumed by the `pi-subagents` community extension.
+
+**Required frontmatter:** `name`, `description` (validated).
+
+```yaml
+---
+name: planner
+description: Produces implementation plans with milestones and risks
+tools: read, bash, grep, find
+tags: planning,architecture
+---
+
+System prompt body here...
+```
+
+`tools` must be comma-separated (`read, bash, grep`) — space-separated will not parse correctly.
+
+At runtime, Home Manager syncs `pi/agent/subagents/*` → `~/.pi/agent/agents/*`.
+
+### 7) Skills
 
 Skills are the unified system for contextual knowledge. They live under `pi/agent/skills/` and are organized by **pedagogical type** (what the skill teaches the agent):
 
@@ -162,11 +285,7 @@ Skill body content here.
 **Injection types** control how the skill reaches the agent:
 
 - `always` — injected every session (core guidance: `core`, `safety`, `tool-usage`, `engineering-focus`, `concise-output`)
-- `detect` — injected when environment heuristics match. Declarative rules in frontmatter:
-  - `files: [...]` — any listed file exists in cwd
-  - `platform: darwin|linux|win32` — OS match
-  - `dependencies: [...]` — any listed dep in package.json
-  - `mode: read-only` — restricted toolset detected
+- `detect` — injected when environment heuristics match (files, platform, dependencies, mode)
 - `classify` — injected when an LLM classifier deems the skill relevant to the user's prompt
 - `explicit` — never auto-injected; loaded on demand by Pi's native skill system when referenced by name
 
@@ -174,11 +293,29 @@ The `prompt-composer` extension discovers all non-explicit skills automatically 
 
 Do NOT create a `system-fragments/` directory — this is a legacy concept. All contextual knowledge belongs in skills.
 
-Validate structure with:
+### 8) Extensions
+
+Extensions use inheritance-based taxonomy via `pi/agent/extension-core`:
+
+| Base class | Category | Purpose |
+|---|---|---|
+| `GuardianExtensionCore` | guardian | Block or gate tool calls |
+| `InterceptorExtensionCore` | interceptor | Modify system prompt or messages in-flight |
+| `WorkflowExtensionCore` | workflow | Manage lifecycle and state for multi-step operations |
+| `WidgetExtensionCore` | widget | Render custom UI components |
+| `IntegrationExtensionCore` | integration | Connect to external services |
+
+Each extension should be a thin adapter over shared core behavior so UI patterns and lifecycle handling stay consistent.
+
+---
+
+## Validation
 
 ```bash
 node pi/agent/scripts/validate-taxonomy.mjs
 ```
+
+This enforces: prompt categories, skill structure/frontmatter, subagent frontmatter, cross-references (prompt `subagents:` → real agents), extension base classes, and legacy directory guards.
 
 ## Git & Worktree Workflow
 

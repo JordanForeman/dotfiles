@@ -1,10 +1,8 @@
 ---
-description: Review changes (staged by default)
+description: Review changes — triage-driven parallel review with synthesis
 workflow: pr-review
-subagents: [pr-triage, design-reviewer, rails-reviewer, frontend-reviewer, testing-reviewer]
+subagents: [pr-triage, design-reviewer, rails-reviewer, frontend-reviewer, testing-reviewer, reviewer]
 ---
-Review the current changes.
+Review the current changes. $@
 
-1) Run `git diff --cached` (if there are no staged changes, fall back to `git diff`).
-2) Identify: bugs/logic issues, error handling gaps, security concerns, and style inconsistencies.
-3) Suggest concrete fixes.
+Triage the diff to identify applicable review dimensions, run specialist reviewers in parallel, then synthesize into a unified report with a go/no-go recommendation.

@@ -1,13 +1,8 @@
 ---
-description: Triage a GitHub issue — understand it and propose solutions
-subagents: [code-explorer]
+description: Triage an issue or incident — parallel investigation with convergent synthesis
+workflow: triage
+subagents: [code-explorer, log-viewer, architect]
 ---
-Triage the GitHub issue at $1.
+Triage: $@
 
-1. Load the issue: `gh issue view $1`
-2. Ask for any additional context (screenshots, reproduction steps)
-3. Use the `subagent` tool with `code-explorer` to investigate the relevant code
-4. Provide:
-   - **Root cause analysis** (or best hypothesis)
-   - **2-3 potential solutions** ranked by complexity and risk
-   - **Recommended approach** with justification
+Investigate the issue from multiple angles in parallel, then synthesize findings into a root cause analysis with confidence level and recommended next steps.

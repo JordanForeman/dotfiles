@@ -2,15 +2,18 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { parseFrontmatter, extractBody } from "./lib/frontmatter.mjs";
 
 const repoRoot = process.cwd();
 const promptsRoot = path.join(repoRoot, "pi/agent/prompts");
 const skillsRoot = path.join(repoRoot, "pi/agent/skills");
+const subagentsRoot = path.join(repoRoot, "pi/agent/subagents");
 const extensionsRoot = path.join(repoRoot, "pi/agent/extensions");
 const extensionCoreRoot = path.join(repoRoot, "pi/agent/extension-core");
 const optionalExtensionsRoot = path.join(repoRoot, "pi/agent/optional-extensions");
 const legacyPhilosophyRoot = path.join(repoRoot, "pi/agent/philosophy");
 const legacyFragmentsRoot = path.join(repoRoot, "pi/agent/system-fragments");
+const legacyOrchestrationsRoot = path.join(repoRoot, "pi/agent/subagents/orchestrations");
 
 const PROMPT_CATEGORIES = ["ship", "analyze", "plan", "learn"];
 const SKILL_CATEGORIES = ["guides", "conventions", "formats", "standards"];
@@ -48,43 +51,6 @@ async function listDirs(dirPath) {
   return entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(dirPath, entry.name));
 }
 
-function parseFrontmatter(content) {
-  const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return null;
-
-  const lines = match[1].split("\n");
-  const result = {};
-  let currentKey = null;
-
-  for (const line of lines) {
-    const indentedMatch = line.match(/^  (\w+):\s*(.*)/);
-    if (indentedMatch && currentKey) {
-      if (!result[currentKey] || typeof result[currentKey] !== "object") {
-        result[currentKey] = {};
-      }
-      result[currentKey][indentedMatch[1]] = indentedMatch[2].trim();
-      continue;
-    }
-
-    const topMatch = line.match(/^(\w+):\s*(.*)/);
-    if (topMatch) {
-      currentKey = topMatch[1];
-      const value = topMatch[2].trim();
-      if (value === "" || value === undefined) {
-        result[currentKey] = {};
-      } else {
-        // Strip quotes
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-          result[currentKey] = value.slice(1, -1);
-        } else {
-          result[currentKey] = value;
-        }
-      }
-    }
-  }
-
-  return result;
-}
 
 async function validateNoLegacyDirectories() {
   for (const legacyDir of [legacyPhilosophyRoot, legacyFragmentsRoot]) {
@@ -93,6 +59,17 @@ async function validateNoLegacyDirectories() {
     if (entries.length > 0) {
       errors.push(
         `Legacy directory should not be used: ${toPosix(legacyDir)} (content belongs in skills taxonomy)`
+      );
+    }
+  }
+
+  // Guard against legacy orchestration JSON directory
+  if (await pathExists(legacyOrchestrationsRoot)) {
+    const entries = await fs.readdir(legacyOrchestrationsRoot, { withFileTypes: true });
+    const jsonFiles = entries.filter((e) => e.isFile() && e.name.endsWith(".json"));
+    if (jsonFiles.length > 0) {
+      errors.push(
+        `Legacy orchestration JSONs should be migrated to workflow extensions: ${toPosix(legacyOrchestrationsRoot)} (${jsonFiles.length} JSON files found)`
       );
     }
   }
@@ -150,7 +127,7 @@ async function validatePromptTaxonomy() {
       }
 
       // Validate body content exists
-      const body = content.replace(/^---\n[\s\S]*?\n---\n*/, "").trim();
+      const body = extractBody(content);
       if (!body) {
         errors.push(`Prompt has empty body: ${displayPath}`);
       }
@@ -250,7 +227,7 @@ async function validateSkillTaxonomy() {
       }
 
       // Validate body content exists (non-empty after frontmatter)
-      const body = content.replace(/^---\n[\s\S]*?\n---\n*/, "").trim();
+      const body = extractBody(content);
       if (!body) {
         errors.push(`Skill has empty body: ${displayPath}`);
       }
@@ -267,7 +244,14 @@ async function discoverExtensionEntryPoints(rootDir) {
 
   for (const dirPath of dirs) {
     const indexPath = path.join(dirPath, "index.ts");
-    if (await pathExists(indexPath)) nested.push(indexPath);
+    if (await pathExists(indexPath)) {
+      nested.push(indexPath);
+    } else {
+      // Subdirectories without index.ts: discover individual .ts files
+      // (e.g. extensions/workflows/tdd.ts, extensions/workflows/triage.ts)
+      const subFiles = await listFiles(dirPath);
+      nested.push(...subFiles.filter((f) => f.endsWith(".ts")));
+    }
   }
 
   return [...topLevel, ...nested].sort();
@@ -321,10 +305,101 @@ async function validateExtensionTaxonomy() {
   }
 }
 
+async function validateSubagentStructure() {
+  if (!(await pathExists(subagentsRoot))) {
+    errors.push(`Missing subagents directory: ${toPosix(subagentsRoot)}`);
+    return new Set();
+  }
+
+  const agentNames = new Set();
+  const files = await listFiles(subagentsRoot);
+  const agentFiles = files.filter((f) => f.endsWith(".md") && !f.endsWith(".chain.md"));
+
+  for (const file of agentFiles) {
+    const basename = path.basename(file);
+    if (basename === "README.md") continue;
+
+    const content = await fs.readFile(file, "utf8");
+    const frontmatter = parseFrontmatter(content);
+    const displayPath = toPosix(file);
+
+    if (!frontmatter) {
+      errors.push(`Subagent missing frontmatter: ${displayPath}`);
+      continue;
+    }
+
+    if (!frontmatter.name) {
+      errors.push(`Subagent missing frontmatter name: ${displayPath}`);
+    } else {
+      if (agentNames.has(frontmatter.name)) {
+        errors.push(`Duplicate subagent name: ${displayPath} (name=${frontmatter.name})`);
+      }
+      agentNames.add(frontmatter.name);
+    }
+
+    if (!frontmatter.description) {
+      errors.push(`Subagent missing frontmatter description: ${displayPath}`);
+    }
+
+    // Body content check
+    const body = extractBody(content);
+    if (!body) {
+      errors.push(`Subagent has empty body (no system prompt): ${displayPath}`);
+    }
+  }
+
+  // Also collect chain names
+  const chainFiles = files.filter((f) => f.endsWith(".chain.md"));
+  for (const file of chainFiles) {
+    const content = await fs.readFile(file, "utf8");
+    const frontmatter = parseFrontmatter(content);
+    if (frontmatter?.name) {
+      agentNames.add(frontmatter.name);
+    }
+  }
+
+  return agentNames;
+}
+
+function parseInlineArray(value) {
+  if (!value || typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return trimmed.slice(1, -1).split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+async function validateCrossReferences(agentNames) {
+  // Validate prompt subagents: references point to real agents
+  for (const category of PROMPT_CATEGORIES) {
+    const categoryPath = path.join(promptsRoot, category);
+    if (!(await pathExists(categoryPath))) continue;
+
+    const files = (await listFiles(categoryPath)).filter((f) => f.endsWith(".md"));
+    for (const file of files) {
+      const content = await fs.readFile(file, "utf8");
+      const frontmatter = parseFrontmatter(content);
+      if (!frontmatter) continue;
+
+      const displayPath = toPosix(file);
+      const declaredAgents = parseInlineArray(frontmatter.subagents);
+
+      for (const agentRef of declaredAgents) {
+        if (!agentNames.has(agentRef)) {
+          errors.push(`Prompt references unknown subagent "${agentRef}": ${displayPath}`);
+        }
+      }
+    }
+  }
+}
+
 async function main() {
   await validateNoLegacyDirectories();
   await validatePromptTaxonomy();
   await validateSkillTaxonomy();
+  const agentNames = await validateSubagentStructure();
+  await validateCrossReferences(agentNames);
   await validateExtensionTaxonomy();
 
   if (errors.length > 0) {
@@ -339,6 +414,7 @@ async function main() {
   console.log(`Prompt categories: ${PROMPT_CATEGORIES.join(", ")}`);
   console.log(`Skill categories: ${SKILL_CATEGORIES.join(", ")}`);
   console.log(`Skill injection types: ${VALID_INJECTION_TYPES.join(", ")}`);
+  console.log(`Subagent definitions: ${agentNames.size}`);
   console.log(`Extension base classes: ${EXTENSION_BASE_CLASSES.join(", ")}`);
 }
 

@@ -1,98 +1,32 @@
-# Agent Definitions (Source of Truth)
+# Agent Definitions
 
-This directory stores Jordan's reusable agent definitions for the `pi-subagents` extension.
-
-> In this repo, the folder name remains `subagents/` for continuity.
-> At runtime, Home Manager syncs this directory to `~/.pi/agent/agents/`, which is where `pi-subagents` discovers agents.
+Reusable agent definitions for the `pi-subagents` extension. See root **AGENTS.md §6** for the frontmatter schema and validation rules.
 
 ## Runtime mapping
 
 - Repo source: `pi/agent/subagents/*.md`
-- Runtime path: `~/.pi/agent/agents/*.md`
-- Optional reusable chains: `*.chain.md` in the same runtime directory
+- Runtime path: `~/.pi/agent/agents/*.md` (synced by Home Manager)
+- Reusable chains: `*.chain.md` in the same directory
 
-## Frontmatter format (pi-subagents compatible)
-
-Agent files are markdown with YAML frontmatter.
-
-```yaml
----
-name: planner
-description: Produces implementation plans with milestones and risks
-tools: read, bash, grep, find
-model: anthropic/claude-sonnet-4-5
-thinking: high
-skill: safe-bash
-output: context.md
-defaultReads: context.md
-defaultProgress: true
----
-
-System prompt body here...
-```
-
-### Required fields
-
-- `name`
-- `description`
-
-### Important formatting note
-
-`tools` must be comma-separated for reliable parsing.
-
-✅ `tools: read, bash, grep, find`
-
-🚫 `tools: read bash grep find`
-
-## Core commands
+## Commands (from pi-subagents)
 
 ```bash
-# Single agent
 /run planner "Plan implementation for issue #123"
-
-# Sequential chain
-/chain code-explorer "Map relevant files" -> planner "Create plan" -> builder "Implement"
-
-# Parallel tracks
+/chain code-explorer "Map files" -> planner "Create plan" -> builder "Implement"
 /parallel code-explorer "Inspect backend" -> code-explorer "Inspect frontend"
-
-# Agent manager UI
 /agents
 ```
 
-## Ralph loop team
+## Formatting note
 
-Files:
-- `ralph-planner.md`
-- `ralph-recon.md`
-- `ralph-implementer.md`
-- `ralph-validator.md`
-- `ralph-historian.md`
-- `ralph-loop.chain.md`
-
-Usage:
-
-```bash
-# One full loop increment
-/chain ralph-loop "Implement top priority item from .pi/ralph/plan.md"
-
-# Run a specific stage directly
-/run ralph-recon "Map existing implementation before code changes"
-```
-
-## Orchestration JSON
-
-`pi/agent/subagents/orchestrations/*.json` stores orchestration artifacts in this repo.
+`tools` must be comma-separated: `tools: read, bash, grep, find`
 
 ## Maintenance
 
-- Keep prompts framework-agnostic unless specialization is explicit (`rails-reviewer`, `frontend-reviewer`, etc.)
+- Keep prompts framework-agnostic unless specialization is explicit
 - Prefer minimal, focused updates
 - Preserve names to avoid breaking existing workflows
 
-Tool/profile heuristic lint helper:
-
 ```bash
 node pi/agent/subagents/scripts/lint-tool-heuristics.mjs
-node pi/agent/subagents/scripts/lint-tool-heuristics.mjs --strict
 ```
