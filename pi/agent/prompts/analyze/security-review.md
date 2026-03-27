@@ -1,5 +1,6 @@
 ---
 description: Perform a focused, high-confidence security review of current diff
+subagents: [reviewer, testing-reviewer]
 ---
 Perform a security-focused review of the current change set.
 

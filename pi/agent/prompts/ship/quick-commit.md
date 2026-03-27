@@ -1,5 +1,6 @@
 ---
 description: Create a single high-signal commit from current changes
+subagents: [git-ops]
 ---
 Create one commit for the current changes.
 

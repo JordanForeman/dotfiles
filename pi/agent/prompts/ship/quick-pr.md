@@ -1,5 +1,6 @@
 ---
 description: Prepare changes and open/update a pull request safely
+subagents: [git-ops]
 ---
 Prepare and publish the current work as a pull request.
 

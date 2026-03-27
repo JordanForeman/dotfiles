@@ -10,9 +10,11 @@ const extensionsRoot = path.join(repoRoot, "pi/agent/extensions");
 const extensionCoreRoot = path.join(repoRoot, "pi/agent/extension-core");
 const optionalExtensionsRoot = path.join(repoRoot, "pi/agent/optional-extensions");
 const legacyPhilosophyRoot = path.join(repoRoot, "pi/agent/philosophy");
+const legacyFragmentsRoot = path.join(repoRoot, "pi/agent/system-fragments");
 
-const PROMPT_CATEGORIES = ["guides", "conventions", "formats", "standards"];
+const PROMPT_CATEGORIES = ["ship", "analyze", "plan", "learn"];
 const SKILL_CATEGORIES = ["guides", "conventions", "formats", "standards"];
+const VALID_INJECTION_TYPES = ["always", "detect", "classify", "explicit"];
 const EXTENSION_BASE_CLASSES = [
   "GuardianExtensionCore",
   "InterceptorExtensionCore",
@@ -46,26 +48,53 @@ async function listDirs(dirPath) {
   return entries.filter((entry) => entry.isDirectory()).map((entry) => path.join(dirPath, entry.name));
 }
 
-function parseFrontmatterName(content) {
+function parseFrontmatter(content) {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) return null;
-  const nameLine = match[1]
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line.startsWith("name:"));
-  if (!nameLine) return null;
-  const value = nameLine.replace(/^name:\s*/, "").trim();
-  return value || null;
+
+  const lines = match[1].split("\n");
+  const result = {};
+  let currentKey = null;
+
+  for (const line of lines) {
+    const indentedMatch = line.match(/^  (\w+):\s*(.*)/);
+    if (indentedMatch && currentKey) {
+      if (!result[currentKey] || typeof result[currentKey] !== "object") {
+        result[currentKey] = {};
+      }
+      result[currentKey][indentedMatch[1]] = indentedMatch[2].trim();
+      continue;
+    }
+
+    const topMatch = line.match(/^(\w+):\s*(.*)/);
+    if (topMatch) {
+      currentKey = topMatch[1];
+      const value = topMatch[2].trim();
+      if (value === "" || value === undefined) {
+        result[currentKey] = {};
+      } else {
+        // Strip quotes
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          result[currentKey] = value.slice(1, -1);
+        } else {
+          result[currentKey] = value;
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
-async function validateNoLegacyPhilosophy() {
-  if (!(await pathExists(legacyPhilosophyRoot))) return;
-
-  const entries = await fs.readdir(legacyPhilosophyRoot, { withFileTypes: true });
-  if (entries.length > 0) {
-    errors.push(
-      `Legacy directory should not be used: ${toPosix(legacyPhilosophyRoot)} (move content to system-fragments, prompts, or skills taxonomy)`
-    );
+async function validateNoLegacyDirectories() {
+  for (const legacyDir of [legacyPhilosophyRoot, legacyFragmentsRoot]) {
+    if (!(await pathExists(legacyDir))) continue;
+    const entries = await fs.readdir(legacyDir, { withFileTypes: true });
+    if (entries.length > 0) {
+      errors.push(
+        `Legacy directory should not be used: ${toPosix(legacyDir)} (content belongs in skills taxonomy)`
+      );
+    }
   }
 }
 
@@ -74,6 +103,15 @@ async function validatePromptTaxonomy() {
     const categoryPath = path.join(promptsRoot, category);
     if (!(await pathExists(categoryPath))) {
       errors.push(`Missing prompt category directory: ${toPosix(categoryPath)}`);
+    }
+  }
+
+  // Guard against legacy prompt categories (skills taxonomy doesn't apply to prompts)
+  const LEGACY_PROMPT_CATEGORIES = ["guides", "conventions", "formats", "standards"];
+  for (const legacy of LEGACY_PROMPT_CATEGORIES) {
+    const legacyPath = path.join(promptsRoot, legacy);
+    if (await pathExists(legacyPath)) {
+      errors.push(`Legacy prompt category should not exist: ${toPosix(legacyPath)} (prompts use workflow-intent categories: ${PROMPT_CATEGORIES.join(", ")})`);
     }
   }
 
@@ -92,6 +130,29 @@ async function validatePromptTaxonomy() {
       const isGitkeep = path.basename(file) === ".gitkeep";
       if (!isMarkdown && !isGitkeep) {
         errors.push(`Unexpected non-markdown file in prompt category: ${toPosix(file)}`);
+        continue;
+      }
+
+      if (!isMarkdown) continue;
+
+      // Validate prompt frontmatter
+      const content = await fs.readFile(file, "utf8");
+      const frontmatter = parseFrontmatter(content);
+      const displayPath = toPosix(file);
+
+      if (!frontmatter) {
+        errors.push(`Prompt missing frontmatter: ${displayPath}`);
+        continue;
+      }
+
+      if (!frontmatter.description) {
+        errors.push(`Prompt missing frontmatter description: ${displayPath}`);
+      }
+
+      // Validate body content exists
+      const body = content.replace(/^---\n[\s\S]*?\n---\n*/, "").trim();
+      if (!body) {
+        errors.push(`Prompt has empty body: ${displayPath}`);
       }
     }
 
@@ -110,12 +171,19 @@ async function validateSkillTaxonomy() {
     }
   }
 
-  const skillRootDirs = await listDirs(skillsRoot);
-  for (const dirPath of skillRootDirs) {
-    const name = path.basename(dirPath);
-    if (SKILL_CATEGORIES.includes(name)) continue;
-    errors.push(`Skill directory must be under a taxonomy category: ${toPosix(dirPath)}`);
+  const skillRootEntries = await fs.readdir(skillsRoot, { withFileTypes: true });
+  for (const entry of skillRootEntries) {
+    if (!entry.isDirectory()) {
+      if (entry.name === ".gitkeep" || entry.name === ".DS_Store") continue;
+      errors.push(`Unexpected file at skills root: ${toPosix(path.join(skillsRoot, entry.name))}`);
+      continue;
+    }
+    if (!SKILL_CATEGORIES.includes(entry.name)) {
+      errors.push(`Skill directory must be under a taxonomy category: ${toPosix(path.join(skillsRoot, entry.name))}`);
+    }
   }
+
+  const skillNames = new Set();
 
   for (const category of SKILL_CATEGORIES) {
     const categoryPath = path.join(skillsRoot, category);
@@ -124,20 +192,67 @@ async function validateSkillTaxonomy() {
     const skillDirs = await listDirs(categoryPath);
     for (const skillDir of skillDirs) {
       const skillMd = path.join(skillDir, "SKILL.md");
+      const displayPath = toPosix(skillMd);
+
       if (!(await pathExists(skillMd))) {
         errors.push(`Skill missing SKILL.md: ${toPosix(skillDir)}`);
         continue;
       }
 
       const content = await fs.readFile(skillMd, "utf8");
-      const declaredName = parseFrontmatterName(content);
+      const frontmatter = parseFrontmatter(content);
       const dirName = path.basename(skillDir);
+
+      if (!frontmatter) {
+        errors.push(`Skill missing frontmatter: ${displayPath}`);
+        continue;
+      }
+
+      // Validate name
+      const declaredName = frontmatter.name;
       if (!declaredName) {
-        errors.push(`Skill missing frontmatter name: ${toPosix(skillMd)}`);
+        errors.push(`Skill missing frontmatter name: ${displayPath}`);
       } else if (declaredName !== dirName) {
         errors.push(
-          `Skill frontmatter name must match directory name: ${toPosix(skillMd)} (name=${declaredName}, dir=${dirName})`
+          `Skill frontmatter name must match directory name: ${displayPath} (name=${declaredName}, dir=${dirName})`
         );
+      }
+
+      // Validate unique name
+      if (declaredName) {
+        if (skillNames.has(declaredName)) {
+          errors.push(`Duplicate skill name: ${displayPath} (name=${declaredName})`);
+        }
+        skillNames.add(declaredName);
+      }
+
+      // Validate description
+      if (!frontmatter.description) {
+        errors.push(`Skill missing frontmatter description: ${displayPath}`);
+      }
+
+      // Validate injection type
+      const injection = frontmatter.injection;
+      if (!injection) {
+        errors.push(`Skill missing frontmatter injection type: ${displayPath}`);
+      } else if (!VALID_INJECTION_TYPES.includes(injection)) {
+        errors.push(
+          `Skill has invalid injection type "${injection}" (expected: ${VALID_INJECTION_TYPES.join(", ")}): ${displayPath}`
+        );
+      }
+
+      // Validate detect rules exist for detect injection
+      if (injection === "detect") {
+        const detect = frontmatter.detect;
+        if (!detect || typeof detect !== "object" || Object.keys(detect).length === 0) {
+          errors.push(`Skill with injection: detect must have detect rules: ${displayPath}`);
+        }
+      }
+
+      // Validate body content exists (non-empty after frontmatter)
+      const body = content.replace(/^---\n[\s\S]*?\n---\n*/, "").trim();
+      if (!body) {
+        errors.push(`Skill has empty body: ${displayPath}`);
       }
     }
   }
@@ -207,7 +322,7 @@ async function validateExtensionTaxonomy() {
 }
 
 async function main() {
-  await validateNoLegacyPhilosophy();
+  await validateNoLegacyDirectories();
   await validatePromptTaxonomy();
   await validateSkillTaxonomy();
   await validateExtensionTaxonomy();
@@ -223,6 +338,7 @@ async function main() {
   console.log("Taxonomy validation passed.");
   console.log(`Prompt categories: ${PROMPT_CATEGORIES.join(", ")}`);
   console.log(`Skill categories: ${SKILL_CATEGORIES.join(", ")}`);
+  console.log(`Skill injection types: ${VALID_INJECTION_TYPES.join(", ")}`);
   console.log(`Extension base classes: ${EXTENSION_BASE_CLASSES.join(", ")}`);
 }
 

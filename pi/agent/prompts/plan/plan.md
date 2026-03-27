@@ -1,5 +1,6 @@
 ---
 description: Create a focused implementation plan
+subagents: [architect, execution-strategist]
 ---
 Create a short implementation plan for: $@
 

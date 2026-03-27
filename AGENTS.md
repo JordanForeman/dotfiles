@@ -85,11 +85,100 @@ Pi is one part of the repo; keep it isolated to `pi/`:
 - Optional chain files: `pi/agent/subagents/*.chain.md`
 - Orchestration JSON: `pi/agent/subagents/orchestrations/`
 - Extensions: `pi/agent/extensions/`
-- Prompts/skills/themes: corresponding `pi/agent/*` folders
+- Skills: `pi/agent/skills/`
+- Prompts: `pi/agent/prompts/`
+- Themes: `pi/agent/themes/`
 
 If changing Pi architecture/docs, also update:
 - `pi/README.md`
 - any relevant README files under `pi/agent/`
+
+### The Prompt → Subagent → Skill Hierarchy
+
+Pi's agent system has three layers that form a natural hierarchy:
+
+```
+Prompts (Intent)       "What should happen"    /review, /plan, /quick-pr
+  │
+Subagents (Execution)  "Who does it"           pr-triage, architect, git-ops
+  │
+Skills (Knowledge)     "How to do it well"     safety, debugging, clean-code
+```
+
+- **Prompts** are user-facing workflow triggers. They declare which subagents they orchestrate.
+- **Subagents** are isolated specialists that execute focused tasks within a workflow.
+- **Skills** are contextual knowledge injected into any agent via the prompt-composer extension.
+
+### 4) Prompts
+
+Prompts are reusable workflow triggers invoked by the user (e.g. `/plan`, `/review`). They live under `pi/agent/prompts/` and are organized by **workflow intent**:
+
+| Category | Purpose | Example |
+|---|---|---|
+| `ship/` | Get code out the door | `quick-commit`, `quick-pr` |
+| `analyze/` | Understand/evaluate code | `review`, `arch`, `security-review` |
+| `plan/` | Decide what to do | `plan`, `triage` |
+| `learn/` | Understand concepts | `learn` |
+
+Each prompt is a markdown file with YAML frontmatter:
+
+```yaml
+---
+description: What this prompt does
+workflow: orchestration-name    # optional: links to subagents/orchestrations/*.json
+subagents: [agent-a, agent-b]   # optional: subagents this prompt may invoke
+---
+
+Prompt body with workflow instructions.
+```
+
+Prompts should NOT use skills' pedagogical categories (`guides/conventions/formats/standards`). The validator guards against this.
+
+### 5) Skills
+
+Skills are the unified system for contextual knowledge. They live under `pi/agent/skills/` and are organized by **pedagogical type** (what the skill teaches the agent):
+
+| Category | Purpose | Example |
+|---|---|---|
+| `conventions/` | Rules: specific constraints to follow | `typescript`, `safety`, `git-ops` |
+| `guides/` | Methodology: how to approach a class of problem | `debugging`, `refactoring`, `figma-design` |
+| `formats/` | Structure: templates for structured output | |
+| `standards/` | Taste: opinionated quality bars; what "good" looks like | `clean-code`, `concise-output`, `frontend-aesthetics` |
+
+Each skill is a directory containing a `SKILL.md` with YAML frontmatter:
+
+```yaml
+---
+name: skill-name          # Must match directory name
+description: When/why this skill is relevant
+injection: detect          # How the skill is delivered
+detect:                    # Rules for injection: detect only
+  files: [tsconfig.json]
+---
+
+Skill body content here.
+```
+
+**Injection types** control how the skill reaches the agent:
+
+- `always` — injected every session (core guidance: `core`, `safety`, `tool-usage`, `engineering-focus`, `concise-output`)
+- `detect` — injected when environment heuristics match. Declarative rules in frontmatter:
+  - `files: [...]` — any listed file exists in cwd
+  - `platform: darwin|linux|win32` — OS match
+  - `dependencies: [...]` — any listed dep in package.json
+  - `mode: read-only` — restricted toolset detected
+- `classify` — injected when an LLM classifier deems the skill relevant to the user's prompt
+- `explicit` — never auto-injected; loaded on demand by Pi's native skill system when referenced by name
+
+The `prompt-composer` extension discovers all non-explicit skills automatically by walking the skills tree and reading frontmatter. **Adding a new skill = adding a directory with a SKILL.md. No extension code changes needed.**
+
+Do NOT create a `system-fragments/` directory — this is a legacy concept. All contextual knowledge belongs in skills.
+
+Validate structure with:
+
+```bash
+node pi/agent/scripts/validate-taxonomy.mjs
+```
 
 ## Git & Worktree Workflow
 

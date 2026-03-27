@@ -1,5 +1,6 @@
 ---
 description: Learn about a domain concept through interactive teaching
+subagents: [code-explainer]
 ---
 Use the `subagent` tool to delegate to the `code-explainer` subagent:
 

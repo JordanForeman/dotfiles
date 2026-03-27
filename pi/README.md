@@ -11,19 +11,18 @@ pi/agent/
 │   ├── *.chain.md      # Optional reusable chains for pi-subagents
 │   └── orchestrations/ # Orchestration JSON artifacts
 ├── prompts/
-│   ├── guides/         # Method/process templates
-│   ├── conventions/    # Policy/rule templates
-│   ├── formats/        # Structured output templates
-│   └── standards/      # Quality/taste templates
+│   ├── ship/          # Get code out the door (commit, PR)
+│   ├── analyze/       # Understand/evaluate (review, arch, security)
+│   ├── plan/          # Decide what to do (plan, triage)
+│   └── learn/         # Understand concepts (interactive teaching)
 ├── skills/
-│   ├── guides/         # Methodology skills
-│   ├── conventions/    # Rules and conventions
-│   ├── formats/        # Structured operation skills
-│   └── standards/      # Opinionated quality bar skills
+│   ├── guides/         # Methodology: teaches how to approach a class of problem
+│   ├── conventions/    # Rules: documents specific rules and constraints to follow
+│   ├── formats/        # Structure: provides templates for structured output
+│   └── standards/      # Taste: opinionated quality bars; what "good" looks like
 ├── extension-core/      # Shared extension base classes + UI helpers
 ├── extensions/          # Always-on local extensions (auto-discovered by pi)
 ├── optional-extensions/ # Opt-in local extensions (loaded ad-hoc via `-e`)
-├── system-fragments/   # Runtime guidance fragments consumed by prompt-composer
 ├── themes/             # UI themes
 ├── settings.json       # Base template (packages are rendered via Nix `pi.extensions`)
 ├── keybindings.json
@@ -125,7 +124,7 @@ Because `hashline` declares a transitive runtime dependency on `diff`, Home Mana
 For shared behavior, edit inside this repo:
 
 - Agent definitions: `pi/agent/subagents/*.md`
-- Prompt templates: `pi/agent/prompts/{guides,conventions,formats,standards}/*.md`
+- Prompt templates: `pi/agent/prompts/{ship,analyze,plan,learn}/*.md`
 - Skills: `pi/agent/skills/{guides,conventions,formats,standards}/**/SKILL.md`
 - Extension cores and shared helpers: `pi/agent/extension-core/**`
 - Always-on extensions: `pi/agent/extensions/**`
@@ -134,7 +133,6 @@ For shared behavior, edit inside this repo:
 - Ralph orchestration artifact: `pi/agent/subagents/orchestrations/ralph-loop.json`
 - Optional extensions: `pi/agent/optional-extensions/**`
 - Themes: `pi/agent/themes/*.json`
-- Runtime guidance fragments: `pi/agent/system-fragments/**` (including standards injected by `prompt-composer`)
 
 Then apply Home Manager for the target machine.
 
@@ -142,23 +140,34 @@ Then apply Home Manager for the target machine.
 
 Pi asset taxonomy is enforced structurally instead of a central registry.
 
-- Prompts are categorized by directory:
-  - `pi/agent/prompts/guides`
-  - `pi/agent/prompts/conventions`
-  - `pi/agent/prompts/formats`
-  - `pi/agent/prompts/standards`
-- Skills are categorized by directory:
-  - `pi/agent/skills/guides`
-  - `pi/agent/skills/conventions`
-  - `pi/agent/skills/formats`
-  - `pi/agent/skills/standards`
-- Extensions use inheritance-based taxonomy via `pi/agent/extension-core`:
+- **Prompts** are categorized by workflow intent:
+  - `pi/agent/prompts/ship` — get code out the door (commit, PR)
+  - `pi/agent/prompts/analyze` — understand/evaluate (review, arch, security)
+  - `pi/agent/prompts/plan` — decide what to do (plan, triage)
+  - `pi/agent/prompts/learn` — understand concepts (interactive teaching)
+- **Prompts** declare their orchestration surface in frontmatter:
+  - `description` — what the prompt does (required)
+  - `workflow` — orchestration pipeline this prompt triggers (optional)
+  - `subagents` — subagents this prompt may invoke (optional, informational)
+- **Skills** are categorized by pedagogical type:
+  - `pi/agent/skills/guides` — methodology: teaches how to approach a class of problem
+  - `pi/agent/skills/conventions` — rules: documents specific constraints to follow
+  - `pi/agent/skills/formats` — structure: provides templates for structured output
+  - `pi/agent/skills/standards` — taste: opinionated quality bars; what "good" looks like
+- **Skills** declare an injection type in frontmatter:
+  - `always` — injected every session (core guidance)
+  - `detect` — injected when environment heuristics match (files, platform, dependencies, mode)
+  - `classify` — injected when an LLM deems the skill relevant to the user's prompt
+  - `explicit` — loaded on demand by Pi's native skill system (never auto-injected)
+- **Extensions** use inheritance-based taxonomy via `pi/agent/extension-core`:
   - `GuardianExtensionCore`
   - `InterceptorExtensionCore`
   - `WorkflowExtensionCore`
   - `WidgetExtensionCore`
   - `IntegrationExtensionCore`
-- Runtime guidance standards are encoded as system fragments (for `prompt-composer`), e.g. `pi/agent/system-fragments/standards/*`
+
+The `prompt-composer` extension dynamically discovers skills from `pi/agent/skills/` and injects
+non-explicit skills into the system prompt based on their injection type and detection rules.
 
 Validate taxonomy structure with:
 

@@ -1,5 +1,7 @@
 ---
 description: Review changes (staged by default)
+workflow: pr-review
+subagents: [pr-triage, design-reviewer, rails-reviewer, frontend-reviewer, testing-reviewer]
 ---
 Review the current changes.
 

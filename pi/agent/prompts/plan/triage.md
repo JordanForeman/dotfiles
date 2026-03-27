@@ -1,5 +1,6 @@
 ---
 description: Triage a GitHub issue — understand it and propose solutions
+subagents: [code-explorer]
 ---
 Triage the GitHub issue at $1.
 
