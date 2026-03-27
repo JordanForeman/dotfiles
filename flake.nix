@@ -119,9 +119,9 @@
   {
     # macOS configurations
     darwinConfigurations = {
-      "personal-macbook" = mkDarwin [ ./nix/home/darwin.nix ];
+      "personal-macbook" = mkDarwin [ ./nix/home/darwin.nix ./nix/home/personal-npm.nix ];
       "work-macbook" = mkDarwin [ ./nix/home/darwin.nix ];
-      "Jordans-MacBook-Pro" = mkDarwin [ ./nix/home/darwin.nix ];
+      "Jordans-MacBook-Pro" = mkDarwin [ ./nix/home/darwin.nix ./nix/home/personal-npm.nix ];
     };
 
     # Home Manager configurations (including Shopify MacBook)
