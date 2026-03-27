@@ -70,11 +70,8 @@ Because `hashline` declares a transitive runtime dependency on `diff`, Home Mana
 # Initialize local loop artifacts (.pi/ralph/*)
 /ralph:init "Deliver scoped features with validation gates"
 
-# Plan next increment
-/ralph:plan "Prioritize one increment from .pi/ralph/plan.md"
-
-# Run one full planner->recon->implement->validate->historian chain
-/ralph:start "Implement top priority increment"
+# Start integrated flow: planning in main session + iterative subagent loops
+/ralph:start -n 3 "Implement top priority increment"
 
 # Observe/control lifecycle
 /ralph:status
@@ -82,6 +79,10 @@ Because `hashline` declares a transitive runtime dependency on `diff`, Home Mana
 /ralph:resume
 /ralph:stop
 /ralph:report
+
+# Override worktree safety guard only when intentional
+/ralph:init --allow-main "Emergency run on primary worktree"
+/ralph:start --allow-main "Emergency increment on primary worktree"
 ```
 
 ### Tool-level usage

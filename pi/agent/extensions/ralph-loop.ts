@@ -54,12 +54,20 @@ type RalphHistoryEvent = {
   detail?: Record<string, unknown>;
 };
 
+type RalphLock = {
+  runId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  command: "start" | "resume" | "retry";
+};
+
 const RALPH_DIR = path.join(".pi", "ralph");
 const POLICY_FILE = "policy.json";
 const STATE_FILE = "state.json";
 const PLAN_FILE = "plan.md";
 const RUNBOOK_FILE = "runbook.md";
 const HISTORY_FILE = "history.jsonl";
+const LOCK_FILE = "lock.json";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -74,6 +82,7 @@ function ralphPaths(cwd: string) {
     plan: path.join(root, PLAN_FILE),
     runbook: path.join(root, RUNBOOK_FILE),
     history: path.join(root, HISTORY_FILE),
+    lock: path.join(root, LOCK_FILE),
   };
 }
 
@@ -203,6 +212,110 @@ function ensureArtifacts(cwd: string, goal?: string) {
   return paths;
 }
 
+function stripAllowMainFlag(args: string): { text: string; allowMain: boolean } {
+  const trimmed = args.trim();
+  const allowMain = trimmed === "--allow-main" || trimmed.startsWith("--allow-main ");
+  const text = allowMain ? trimmed.replace(/^--allow-main\s*/, "").trim() : trimmed;
+  return { text, allowMain };
+}
+
+function parseStartFlowArgs(input: string): { objective: string; iterations: number } {
+  const match = input.match(/(?:--iterations|-n)\s+(\d+)/);
+  const iterations = match ? Math.max(1, Number(match[1])) : 3;
+  const objective = input.replace(/(?:--iterations|-n)\s+\d+/, "").trim();
+  return { objective, iterations };
+}
+
+function isMainWorktree(cwd: string): boolean {
+  try {
+    let dir = path.resolve(cwd);
+
+    while (true) {
+      const dotGit = path.join(dir, ".git");
+      if (fs.existsSync(dotGit)) {
+        return fs.statSync(dotGit).isDirectory();
+      }
+
+      const parent = path.dirname(dir);
+      if (parent === dir) return false;
+      dir = parent;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function assertSafeWorktreeOrNotify(ctx: ExtensionCommandContext, allowMain: boolean): boolean {
+  if (allowMain) return true;
+  if (!isMainWorktree(ctx.cwd)) return true;
+
+  ctx.ui.notify(
+    "Ralph guard: this appears to be the primary worktree. Use a feature worktree or pass --allow-main.",
+    "warning"
+  );
+  return false;
+}
+
+function getLock(cwd: string): RalphLock | null {
+  return readJsonFile(ralphPaths(cwd).lock, null as RalphLock | null);
+}
+
+function saveLock(cwd: string, lock: RalphLock) {
+  writeJsonFile(ralphPaths(cwd).lock, lock);
+}
+
+function clearLock(cwd: string) {
+  const { lock } = ralphPaths(cwd);
+  fs.rmSync(lock, { force: true });
+}
+
+function upsertLock(cwd: string, command: RalphLock["command"], runId: string | null) {
+  const existing = getLock(cwd);
+  const lock: RalphLock = {
+    runId,
+    command,
+    createdAt: existing?.createdAt ?? nowIso(),
+    updatedAt: nowIso(),
+  };
+  saveLock(cwd, lock);
+}
+
+function isActivePhase(phase: RalphPhase): boolean {
+  return phase === "running" || phase === "paused";
+}
+
+function lockConflicts(cwd: string, state: RalphState): boolean {
+  const lock = getLock(cwd);
+  if (!lock) return false;
+
+  if (!isActivePhase(state.phase)) {
+    clearLock(cwd);
+    return false;
+  }
+
+  const sameRun = lock.runId && state.currentRunId && lock.runId === state.currentRunId;
+  return !sameRun;
+}
+
+function acquireStartLock(cwd: string, runId: string): boolean {
+  const { lock } = ralphPaths(cwd);
+  const payload: RalphLock = {
+    runId,
+    command: "start",
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+
+  try {
+    const fd = fs.openSync(lock, "wx");
+    fs.writeFileSync(fd, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    fs.closeSync(fd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function dispatchCommand(pi: ExtensionAPI, ctx: ExtensionCommandContext, command: string) {
   if (ctx.isIdle()) {
     pi.sendUserMessage(command);
@@ -229,9 +342,12 @@ function registerRalphCommand(
 
 export default function ralphLoop(pi: ExtensionAPI) {
   registerRalphCommand(pi, "ralph:init", "Initialize Ralph loop policy and state files", async (args, ctx) => {
-    ensureArtifacts(ctx.cwd, args.trim());
+    const parsed = stripAllowMainFlag(args);
+    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+
+    ensureArtifacts(ctx.cwd, parsed.text);
     const state = loadState(ctx.cwd);
-    const goal = args.trim() || state.objective || "Deliver scoped features with strict validation gates.";
+    const goal = parsed.text || state.objective || "Deliver scoped features with strict validation gates.";
 
     const nextState: RalphState = {
       ...state,
@@ -242,11 +358,15 @@ export default function ralphLoop(pi: ExtensionAPI) {
     };
 
     saveState(ctx.cwd, nextState);
+    clearLock(ctx.cwd);
     appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "init", phase: nextState.phase, detail: { goal } });
     ctx.ui.notify(`Ralph initialized: ${summarizeState(nextState)}`, "success");
   });
 
-  registerRalphCommand(pi, "ralph:start", "Start one Ralph loop run via subagent chain", async (args, ctx) => {
+  registerRalphCommand(pi, "ralph:start", "Start integrated Ralph flow (plan + iterative execution)", async (args, ctx) => {
+    const parsed = stripAllowMainFlag(args);
+    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
 
@@ -263,6 +383,7 @@ export default function ralphLoop(pi: ExtensionAPI) {
         phase: "idle",
       };
       saveState(ctx.cwd, effectiveState);
+      clearLock(ctx.cwd);
       appendHistory(ctx.cwd, {
         ts: nowIso(),
         runId: state.currentRunId,
@@ -277,8 +398,15 @@ export default function ralphLoop(pi: ExtensionAPI) {
     }
 
 
+    const startFlow = parseStartFlowArgs(parsed.text);
     const runId = `R-${String(effectiveState.runCount + 1).padStart(4, "0")}`;
-    const objective = args.trim() || effectiveState.objective || "Execute top priority plan item";
+    const objective = startFlow.objective || effectiveState.objective || "Execute top priority plan item";
+    const iterations = startFlow.iterations;
+
+    if (!acquireStartLock(ctx.cwd, runId)) {
+      ctx.ui.notify("Unable to acquire Ralph lock for this worktree. Another run may already be active.", "warning");
+      return;
+    }
 
     const nextState: RalphState = {
       ...effectiveState,
@@ -295,27 +423,41 @@ export default function ralphLoop(pi: ExtensionAPI) {
       runId,
       action: "start",
       phase: nextState.phase,
-      detail: { objective },
+      detail: { objective, iterations },
     });
 
-    const task = [
-      `Objective: ${objective}`,
-      `Run ID: ${runId}`,
-      `Policy: @${path.join(RALPH_DIR, POLICY_FILE)}`,
-      `Plan: @${path.join(RALPH_DIR, PLAN_FILE)}`,
-      `Runbook: @${path.join(RALPH_DIR, RUNBOOK_FILE)}`,
-      "Execute one loop item only. Search before edits. Apply validation gates before declaring completion.",
+    const orchestratorPrompt = [
+      `You are starting Ralph run ${runId}.`,
+      `High-level objective: ${objective}`,
+      `Loop iterations to execute: ${iterations}`,
+      `Artifacts: @${path.join(RALPH_DIR, POLICY_FILE)}, @${path.join(RALPH_DIR, PLAN_FILE)}, @${path.join(RALPH_DIR, RUNBOOK_FILE)}`,
+      "Workflow:",
+      "1) Planning mode in this main session: break the objective into prioritized, testable increments in @.pi/ralph/plan.md.",
+      "2) If requirements are ambiguous, use ask_user to ask the user concise multiple-choice questions before finalizing the plan.",
+      "3) After planning, execute exactly one increment per iteration using sub-sessions via /chain ralph-loop.",
+      "4) Before each iteration, re-check priorities from @.pi/ralph/plan.md.",
+      "5) Keep @.pi/ralph/plan.md and @.pi/ralph/runbook.md updated after each iteration.",
+      "6) Do not execute multiple increments in a single iteration.",
+      "Begin now.",
     ].join("\n");
 
-    dispatchCommand(pi, ctx, `/chain ${nextState.agentMap.chain} "${quote(task)}"`);
-    ctx.ui.notify(`Ralph run started (${runId})`, "info");
+    dispatchCommand(pi, ctx, orchestratorPrompt);
+    ctx.ui.notify(`Ralph flow started (${runId})`, "info");
   });
 
   registerRalphCommand(pi, "ralph:plan", "Refresh Ralph plan using planner subagent", async (args, ctx) => {
+    const parsed = stripAllowMainFlag(args);
+    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
 
-    const objective = args.trim() || state.objective || "Refresh prioritized implementation plan";
+    if (state.phase === "running" || state.phase === "paused") {
+      ctx.ui.notify("Cannot re-plan while a run is active. Pause/stop first.", "warning");
+      return;
+    }
+
+    const objective = parsed.text || state.objective || "Refresh prioritized implementation plan";
 
     const nextState: RalphState = {
       ...state,
@@ -338,7 +480,10 @@ export default function ralphLoop(pi: ExtensionAPI) {
     ctx.ui.notify("Ralph planning dispatched", "info");
   });
 
-  registerRalphCommand(pi, "ralph:retry", "Retry current item with implementer -> validator chain", async (_args, ctx) => {
+  registerRalphCommand(pi, "ralph:retry", "Retry current item with implementer -> validator chain", async (args, ctx) => {
+    const parsed = stripAllowMainFlag(args);
+    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
 
@@ -358,7 +503,13 @@ export default function ralphLoop(pi: ExtensionAPI) {
       paused: false,
     };
 
+    if (lockConflicts(ctx.cwd, state)) {
+      ctx.ui.notify("Ralph lock is owned by another run in this worktree.", "warning");
+      return;
+    }
+
     saveState(ctx.cwd, nextState);
+    upsertLock(ctx.cwd, "retry", nextState.currentRunId);
     appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "retry", phase: nextState.phase });
 
     const implementTask = quote([
@@ -381,7 +532,10 @@ export default function ralphLoop(pi: ExtensionAPI) {
     ctx.ui.notify(`Retry chain dispatched for ${nextState.currentRunId}`, "info");
   });
 
-  registerRalphCommand(pi, "ralph:pause", "Pause Ralph loop execution", async (_args, ctx) => {
+  registerRalphCommand(pi, "ralph:pause", "Pause Ralph loop execution", async (args, ctx) => {
+    const parsed = stripAllowMainFlag(args);
+    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
 
@@ -398,7 +552,10 @@ export default function ralphLoop(pi: ExtensionAPI) {
     ctx.ui.notify("Ralph paused", "warning");
   });
 
-  registerRalphCommand(pi, "ralph:resume", "Resume a paused Ralph run", async (_args, ctx) => {
+  registerRalphCommand(pi, "ralph:resume", "Resume a paused Ralph run", async (args, ctx) => {
+    const parsed = stripAllowMainFlag(args);
+    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
 
@@ -412,8 +569,14 @@ export default function ralphLoop(pi: ExtensionAPI) {
       return;
     }
 
+    if (lockConflicts(ctx.cwd, state)) {
+      ctx.ui.notify("Ralph lock is owned by another run in this worktree.", "warning");
+      return;
+    }
+
     const nextState: RalphState = { ...state, phase: "running", paused: false };
     saveState(ctx.cwd, nextState);
+    upsertLock(ctx.cwd, "resume", nextState.currentRunId);
 
     appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "resume", phase: nextState.phase });
 
@@ -428,7 +591,10 @@ export default function ralphLoop(pi: ExtensionAPI) {
     ctx.ui.notify(`Ralph resumed (${nextState.currentRunId})`, "info");
   });
 
-  registerRalphCommand(pi, "ralph:stop", "Stop Ralph loop execution", async (_args, ctx) => {
+  registerRalphCommand(pi, "ralph:stop", "Stop Ralph loop execution", async (args, ctx) => {
+    const parsed = stripAllowMainFlag(args);
+    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
 
@@ -439,6 +605,7 @@ export default function ralphLoop(pi: ExtensionAPI) {
     const nextState: RalphState = { ...state, phase: "stopped", paused: false, currentRunId: null };
 
     saveState(ctx.cwd, nextState);
+    clearLock(ctx.cwd);
     appendHistory(ctx.cwd, { ts: nowIso(), runId: state.currentRunId, action: "stop", phase: nextState.phase });
 
     ctx.abort();
@@ -446,14 +613,25 @@ export default function ralphLoop(pi: ExtensionAPI) {
   });
 
   registerRalphCommand(pi, "ralph:status", "Show current Ralph state", async (_args, ctx) => {
-    ensureArtifacts(ctx.cwd);
+    const paths = ralphPaths(ctx.cwd);
+    if (!fs.existsSync(paths.state)) {
+      ctx.ui.notify("Ralph is not initialized in this worktree. Run /ralph:init first.", "warning");
+      return;
+    }
+
     const state = loadState(ctx.cwd);
-    ctx.ui.notify(`Ralph status: ${summarizeState(state)}`, "info");
+    const lock = getLock(ctx.cwd);
+    const lockStatus = lock ? ` | lock=${lock.runId ?? "unknown"}` : " | lock=none";
+    ctx.ui.notify(`Ralph status: ${summarizeState(state)}${lockStatus}`, "info");
   });
 
   registerRalphCommand(pi, "ralph:report", "Generate a concise report of Ralph loop activity", async (_args, ctx) => {
-    ensureArtifacts(ctx.cwd);
     const paths = ralphPaths(ctx.cwd);
+    if (!fs.existsSync(paths.state)) {
+      ctx.ui.notify("Ralph is not initialized in this worktree. Run /ralph:init first.", "warning");
+      return;
+    }
+
     const state = loadState(ctx.cwd);
 
     const lines = fs.existsSync(paths.history)

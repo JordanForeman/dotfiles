@@ -19,6 +19,7 @@ type AskResult = {
   cancelled: boolean
   freeformRequested: boolean
   freeformChoices?: { label: string; description?: string }[]
+  context?: string | null
 }
 
 const FREEFORM_LABEL = "Write a custom response"
@@ -31,6 +32,7 @@ const ChoiceObjectSchema = Type.Object({
 
 const AskUserParams = Type.Object({
   question: Type.String({ description: "Question shown to the user" }),
+  context: Type.Optional(Type.String({ description: "Optional context shown above the question." })),
   choices: Type.Array(
     Type.Union([Type.String(), ChoiceObjectSchema]),
     { description: "List of choices. Can be strings or {label,value,description}." },
@@ -66,7 +68,7 @@ function normalizeChoices(rawChoices: Array<string | { label: string; value?: st
 }
 
 function buildSystemPrompt(basePrompt: string): string {
-  return `${basePrompt}\n\n[pi-ask extension]\nRule: if you are about to ask the user to pick from 2+ choices, you MUST call ask_user instead of writing the choices in plain assistant text.\nThis includes "what should we do next?", tradeoff menus, option A/B/C prompts, and clarification checklists.\nKeep choices concise (3-6 options), and default allowAdditionalText=true so the user can press Tab on a selected option to add nuance.\nFor each choice: label = the action/path (short, scannable), description = tradeoffs, pros/cons, or key context (optional, one line).\nSelf-check before sending: if your draft contains a numbered/bulleted choice list for the user, replace it with ask_user.`
+  return `${basePrompt}\n\n[pi-ask extension]\nRule: if you are about to ask the user to pick from 2+ choices, you MUST call ask_user instead of writing the choices in plain assistant text.\nThis includes "what should we do next?", tradeoff menus, option A/B/C prompts, and clarification checklists.\nKeep choices concise (3-6 options), and default allowAdditionalText=true so the user can press Tab on a selected option to add nuance.\nFor each choice: label = the action/path (short, scannable), description = tradeoffs, pros/cons, or key context (optional, one line).\nIf your question needs setup/context before the choices, pass it via ask_user.context so it is visible in the selector UI.\nSelf-check before sending: if your draft contains a numbered/bulleted choice list for the user, replace it with ask_user.`
 }
 
 function renderInlineCursor(text: string, cursor: number, focused: boolean): string {
@@ -129,6 +131,7 @@ function makeResult(question: string, overrides: Partial<AskResult> = {}): AskRe
     answer: null,
     cancelled: false,
     freeformRequested: false,
+    context: null,
     ...overrides,
   }
 }
@@ -146,18 +149,21 @@ function registerAskTool(pi: ExtensionAPI, name: string, label: string) {
       const allowAdditionalText = params.allowAdditionalText !== false
       const canCancel = params.canCancel !== false
       const additionalTextLabel = params.additionalTextLabel?.trim() || "additional details"
+      const contextText = params.context?.trim() || null
+      const makeContextResult = (overrides: Partial<AskResult> = {}) =>
+        makeResult(params.question, { context: contextText, ...overrides })
 
       if (!ctx.hasUI) {
         return {
           content: [{ type: "text", text: "Error: ask_user requires interactive UI mode." }],
-          details: makeResult(params.question, { cancelled: true }),
+          details: makeContextResult({ cancelled: true }),
         }
       }
 
       if (choices.length === 0) {
         return {
           content: [{ type: "text", text: "Error: ask_user requires at least one choice." }],
-          details: makeResult(params.question, { cancelled: true }),
+          details: makeContextResult({ cancelled: true }),
         }
       }
 
@@ -199,7 +205,7 @@ function registerAskTool(pi: ExtensionAPI, name: string, label: string) {
           const normalizedAdditional = additionalText?.trim() || null
           const answer = normalizedAdditional ? `${selected.label}: ${normalizedAdditional}` : selected.label
 
-          done(makeResult(params.question, {
+          done(makeContextResult({
             selectedLabel: selected.label,
             selectedValue: selected.value,
             selectedIndex: selectedIndex + 1,
@@ -209,7 +215,7 @@ function registerAskTool(pi: ExtensionAPI, name: string, label: string) {
         }
 
         function submitFreeformRequest() {
-          done(makeResult(params.question, { freeformRequested: true }))
+          done(makeContextResult({ freeformRequested: true }))
         }
 
         function handleDetailInput(data: string) {
@@ -353,6 +359,14 @@ function registerAskTool(pi: ExtensionAPI, name: string, label: string) {
 
           add(theme.fg("accent", "─".repeat(width)))
           add(theme.fg("text", ` ${params.question}`))
+          if (contextText) {
+            lines.push("")
+            add(theme.fg("muted", " Context"))
+            for (const line of wrapTextWithAnsi(contextText, Math.max(10, width - 3))) {
+              add(`   ${theme.fg("dim", line)}`)
+            }
+            lines.push("")
+          }
           lines.push("")
 
           // Render choices
@@ -452,7 +466,9 @@ function registerAskTool(pi: ExtensionAPI, name: string, label: string) {
     renderCall(args, theme) {
       const count = Array.isArray(args.choices) ? args.choices.length : 0
       const text = `${theme.fg("toolTitle", theme.bold(`${name} `))}${theme.fg("muted", args.question)}${theme.fg("dim", ` (${count} choices)`)}`
-      return new Text(text, 0, 0)
+      const context = typeof args.context === "string" ? args.context.trim() : ""
+      const contextLine = context ? `\n${theme.fg("dim", context)}` : ""
+      return new Text(text + contextLine, 0, 0)
     },
 
     renderResult(result, _options, theme) {
@@ -476,11 +492,12 @@ function registerAskTool(pi: ExtensionAPI, name: string, label: string) {
         return new Text(`${header}\n${items}\n${footer}`, 0, 0)
       }
 
+      const contextPrefix = details.context ? `${theme.fg("dim", details.context)}\n` : ""
       const choice = `${details.selectedIndex}. ${details.selectedLabel}`
       const base = `${theme.fg("success", "✓ ")}${theme.fg("accent", choice)}`
-      if (!details.additionalText) return new Text(base, 0, 0)
+      if (!details.additionalText) return new Text(contextPrefix + base, 0, 0)
 
-      return new Text(`${base}\n${theme.fg("muted", `details: ${details.additionalText}`)}`, 0, 0)
+      return new Text(`${contextPrefix}${base}\n${theme.fg("muted", `details: ${details.additionalText}`)}`, 0, 0)
     },
   })
 }
