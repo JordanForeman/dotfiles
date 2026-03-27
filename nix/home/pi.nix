@@ -139,6 +139,7 @@ in
     home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
     home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
     home.file.".pi/agent/extensions/ralph-loop.ts".source = ../../pi/agent/extensions/ralph-loop.ts;
+    home.file.".pi/agent/extensions/linear.ts".source = ../../pi/agent/extensions/linear.ts;
 
     # Optional extensions are staged outside auto-discovery and loaded ad-hoc (e.g. via `pi -e ...`).
 
