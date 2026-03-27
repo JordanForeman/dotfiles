@@ -41,6 +41,7 @@ in
   
   # Personal environment variables (that don't conflict with Shopify's)
   home.sessionVariables = {
+    NVIM_RUBY_USE_PROJECT_TOOLS = "1";
     EDITOR = "nvim";
     # Let Shopify's tools set their own vars, we'll only set personal ones
   };
@@ -88,8 +89,4 @@ in
     recursive = true;
   };
 
-  # Pi documentation (shareable)
-  home.file.".pi/agent/AGENTS.md" = {
-    source = ../../pi/agent/AGENTS.md;
-  };
 }

@@ -99,7 +99,6 @@ in
     # Pi stores machine-local state there (auth.json, sessions/). Instead we manage
     # only the specific files/directories we want synced.
 
-    home.file.".pi/agent/AGENTS.md".source = ../../pi/agent/AGENTS.md;
     # settings.json needs to be writable at runtime (Pi saves settings back to it).
     # home.file creates read-only symlinks into the Nix store, so we copy it via
     # an activation script instead.
