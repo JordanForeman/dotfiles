@@ -89,6 +89,7 @@ in
         "../agent/extensions/theme-switcher.ts"
         "../agent/extensions/pi-ask.ts"
         "../agent/extensions/ralph-loop.ts"
+        "../agent/extensions/context-threshold/index.ts"
       ]
       ++ config.pi.extensions
     );
@@ -151,6 +152,11 @@ in
 
     home.file.".pi/agent/extensions/prompt-composer" = {
       source = ../../pi/agent/extensions/prompt-composer;
+      recursive = true;
+    };
+
+    home.file.".pi/agent/extensions/context-threshold" = {
+      source = ../../pi/agent/extensions/context-threshold;
       recursive = true;
     };
 
