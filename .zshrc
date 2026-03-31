@@ -16,6 +16,16 @@ export CPATH="$HOME/.nix-profile/include"
 export LIBRARY_PATH="$HOME/.nix-profile/lib"
 
 # Zsh plugins (managed by Nix)
+
+# ── zsh-autocomplete performance tuning (must be set BEFORE sourcing) ──
+# Abort async completion if it takes longer than 500ms (default: 1.0s).
+# This is the main fix for git operations hanging in large monorepos.
+zstyle ':autocomplete:*' timeout 0.5
+# Increase debounce to 100ms so fast typing doesn't trigger wasteful completions
+zstyle ':autocomplete:*' delay 0.1
+# Require at least 2 chars before showing completions (reduces noise)
+zstyle ':autocomplete:*' min-input 2
+
 # Find and source zsh-autocomplete
 for plugin_path in $HOME/.nix-profile/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh \
                    /nix/var/nix/profiles/default/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh \
@@ -25,6 +35,12 @@ for plugin_path in $HOME/.nix-profile/share/zsh-autocomplete/zsh-autocomplete.pl
         break
     fi
 done
+
+# ── zsh-autosuggestions performance tuning (must be set BEFORE sourcing) ──
+# Don't fetch suggestions for buffers longer than 20 chars (avoids slow lookups)
+ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
+# Skip rebinding widgets on every precmd (minor but free speedup)
+ZSH_AUTOSUGGEST_MANUAL_REBIND=1
 
 # Find and source zsh-autosuggestions
 for plugin_path in $HOME/.nix-profile/share/zsh-autosuggestions/zsh-autosuggestions.zsh \
