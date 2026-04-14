@@ -8,6 +8,7 @@ injection: always
 - Read before editing and preserve existing local style/conventions.
 - Avoid speculative refactors or opportunistic cleanups unless explicitly requested.
 - When uncertain, investigate first; do not guess.
+- **Write tests before implementation.** New features and bug fixes require failing tests first (see `test-first` skill). Refactors must pass existing tests unchanged.
 - For non-trivial execution requests, default to **plan → delegate → execute** instead of immediate solo implementation.
 - Choose delegation topology dynamically per task:
   - single specialist (`/run`)
