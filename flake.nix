@@ -121,7 +121,17 @@
     darwinConfigurations = {
       "personal-macbook" = mkDarwin [ ./nix/home/darwin.nix ./nix/home/personal-npm.nix ];
       "work-macbook" = mkDarwin [ ./nix/home/darwin.nix ];
-      "Jordans-MacBook-Pro" = mkDarwin [ ./nix/home/darwin.nix ./nix/home/personal-npm.nix ];
+      "Jordans-MacBook-Pro" = mkDarwin [
+        ./nix/home/darwin.nix
+        ./nix/home/personal-npm.nix
+        ({ pkgs, ... }: {
+          home.packages = [
+            (pkgs.writeShellScriptBin "caffeinate" ''
+              exec /usr/bin/caffeinate "$@"
+            '')
+          ];
+        })
+      ];
     };
 
     # Home Manager configurations (including Shopify MacBook)
