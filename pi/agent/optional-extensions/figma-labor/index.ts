@@ -34,11 +34,11 @@
  *   figma_undo                Undo the last operation
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { IntegrationExtensionCore } from "../../extension-core/integration-extension-core";
 import { setExtensionStatus } from "../../extension-core/ui";
-import { StringEnum } from "@mariozechner/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";

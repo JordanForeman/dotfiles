@@ -263,7 +263,7 @@ After the agent turn ends (`agent_end`), the engine evaluates the transition rul
 ```typescript
 // pi/agent/extensions/workflows/tdd.ts
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { WorkflowEngine, type WorkflowDefinition } from "../../extension-core/workflow-engine";
 import { WorkflowExtensionCore } from "../../extension-core/workflow-extension-core";
 

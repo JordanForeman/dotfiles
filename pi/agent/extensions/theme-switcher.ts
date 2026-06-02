@@ -1,11 +1,11 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { WidgetExtensionCore } from "../extension-core/widget-extension-core";
-import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import { Container, type SelectItem, SelectList, Text } from "@earendil-works/pi-tui";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 
 const THEME_SUBCOMMANDS = ["list", "current", "next", "prev", "pick", "set-default", "help"];
 

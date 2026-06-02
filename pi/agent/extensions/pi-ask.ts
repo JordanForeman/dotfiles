@@ -1,7 +1,7 @@
 // Graciously borrowed from: https://github.com/Soleone/pi-ext/blob/3107c4fca55742577177db96c7cb9e817211b49f/pi-ask.ts
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent"
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { GuardianExtensionCore } from "../extension-core/guardian-extension-core"
-import { CURSOR_MARKER, Key, Text, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui"
+import { CURSOR_MARKER, Key, Text, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui"
 import { Type } from "@sinclair/typebox"
 
 type Choice = {

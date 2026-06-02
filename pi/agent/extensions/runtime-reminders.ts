@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { InterceptorExtensionCore } from "../extension-core/interceptor-extension-core";
 
 const COMPLEX_PROMPT_KEYWORDS = [

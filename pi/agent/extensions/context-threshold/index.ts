@@ -5,9 +5,9 @@ import type {
   ExtensionAPI,
   ExtensionCommandContext,
   ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { InterceptorExtensionCore } from "./base";
-import type { AutocompleteItem } from "@mariozechner/pi-tui";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { SessionHealthMonitor, type HealthReport } from "./health-monitor";
 
 // ─── Defaults & Constants ────────────────────────────────────────────────────

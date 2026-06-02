@@ -9,7 +9,7 @@
  * Commands: /figma-mcp — show connection status and available tools
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { IntegrationExtensionCore } from "../extension-core/integration-extension-core";
 import { Type, type TSchema } from "@sinclair/typebox";
 import { setExtensionStatus } from "../extension-core/ui";

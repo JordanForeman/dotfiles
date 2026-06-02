@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { WorkflowExtensionCore } from "../extension-core/workflow-extension-core";
 
 type RalphPhase = "uninitialized" | "idle" | "planning" | "running" | "paused" | "stopped";

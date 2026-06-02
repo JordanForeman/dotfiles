@@ -14,7 +14,7 @@ from typing import Any
 
 
 PASCAL_PI_AGENT_PACKAGE = {
-    "source": "git:https://github.com/pascal-de-ladurantaye/pi-agent@b82bbe70ae4af185a9a7fb9419b2ce87a788b1d6",
+    "source": "git:https://github.com/pascal-de-ladurantaye/pi-agent@main",
     "extensions": ["extensions/bash-guard/**", "extensions/hashline/**"],
     "skills": [],
     "prompts": [],

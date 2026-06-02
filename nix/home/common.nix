@@ -18,7 +18,7 @@ in
 
   pi.extensions = [
     {
-      source = "git:https://github.com/pascal-de-ladurantaye/pi-agent@b82bbe70ae4af185a9a7fb9419b2ce87a788b1d6";
+      source = "git:https://github.com/pascal-de-ladurantaye/pi-agent@main";
       extensions = [
         "extensions/bash-guard/**"
         "extensions/hashline/**"
@@ -102,6 +102,11 @@ in
     python3Packages.pip
     go
     bun
+    rustc
+    cargo
+    rustfmt
+    clippy
+    rust-analyzer
 
     # Zsh plugins
     zsh-autocomplete

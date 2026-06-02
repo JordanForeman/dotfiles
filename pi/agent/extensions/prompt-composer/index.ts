@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { completeSimple } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { completeSimple } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { InterceptorExtensionCore } from "../../extension-core/interceptor-extension-core";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -263,8 +263,8 @@ async function classifyPrompt(
 
   if (!model) return [];
 
-  const apiKey = await ctx.modelRegistry.getApiKey(model);
-  if (!apiKey) return [];
+  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+  if (!auth.ok) return [];
 
   const fragmentList = classifySkills
     .map((s) => `- ${s.relativePath}: "${s.description}"`)
@@ -277,7 +277,8 @@ async function classifyPrompt(
       systemPrompt: CLASSIFIER_SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage, timestamp: Date.now() }],
     }, {
-      apiKey,
+      apiKey: auth.apiKey,
+      headers: auth.headers,
       maxTokens: 256,
       temperature: 0,
     });

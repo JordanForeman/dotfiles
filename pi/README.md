@@ -68,6 +68,22 @@ Check settings include:
 ]
 ```
 
+### Latest GPT models unavailable
+
+Use the provider that matches your auth:
+
+- **ChatGPT subscription** → `/login` and choose **OpenAI Codex** (`openai-codex` provider)
+- **OpenAI Platform API** → set `OPENAI_API_KEY` (or `auth.json` entry `openai`)
+
+Quick checks:
+
+```bash
+pi --list-models openai-codex
+pi --list-models openai
+```
+
+If `openai` requests fail with quota/billing errors, update the OpenAI Platform API key or billing/project limits.
+
 ### Work-only MCP tools not loading
 
 Ensure machine-local files still exist under `~/.pi/agent/` (not managed by dotfiles):
