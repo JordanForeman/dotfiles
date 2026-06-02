@@ -127,6 +127,20 @@ EOF
   # Needed to install "unfree" packages (whatever the heck that means)
   export NIXPKGS_ALLOW_UNFREE=1
 
+  # nix-darwin invokes `brew bundle` during activation. Homebrew's cask API
+  # can fail with stale metadata when automatic updates are disabled, so refresh
+  # it before switching.
+  if [[ "$INSTALL_MODE" == "nix-darwin" ]] && command -v brew &>/dev/null; then
+    echo "🍺 Updating Homebrew metadata..."
+    if brew update; then
+      echo "✅ Homebrew metadata updated"
+    else
+      echo "❌ Homebrew update failed. Please check the error messages above."
+      exit 1
+    fi
+    echo ""
+  fi
+
   echo "🔧 Building configuration..."
   if [[ "$INSTALL_MODE" == "nix-darwin" ]]; then
     if darwin-rebuild build --flake .#$CONFIG --impure; then

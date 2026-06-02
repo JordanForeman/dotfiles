@@ -27,6 +27,9 @@ in
   launchd.agents.colima = {
     enable = true;
     config = {
+      EnvironmentVariables = {
+        PATH = "${pkgs.docker}/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+      };
       ProgramArguments = [
         "${pkgs.colima}/bin/colima"
         "start"
@@ -42,13 +45,19 @@ in
   launchd.agents.mysql = {
     enable = true;
     config = {
+      EnvironmentVariables = {
+        DOCKER_HOST = "unix://${config.home.homeDirectory}/.colima/default/docker.sock";
+      };
       ProgramArguments = [
         "/bin/sh"
         "-c"
         "while ! ${pkgs.docker}/bin/docker info >/dev/null 2>&1; do sleep 1; done && ${pkgs.docker}/bin/docker run --rm --name mysql -p 3306:3306 -v mysql-data:/var/lib/mysql mysql:8"
       ];
       RunAtLoad = true;
+      StandardOutPath = "/tmp/mysql.log";
+      StandardErrorPath = "/tmp/mysql.err.log";
       KeepAlive = false;
     };
   };
+
 }

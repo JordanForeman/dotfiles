@@ -124,12 +124,34 @@
       "Jordans-MacBook-Pro" = mkDarwin [
         ./nix/home/darwin.nix
         ./nix/home/personal-npm.nix
-        ({ pkgs, ... }: {
+        ({ config, pkgs, ... }: {
           home.packages = [
+            pkgs.docker
+            pkgs.postgresql
+            pkgs.postgresql.pg_config
+            pkgs.libpq
             (pkgs.writeShellScriptBin "caffeinate" ''
               exec /usr/bin/caffeinate "$@"
             '')
           ];
+
+          launchd.agents.postgres = {
+            enable = true;
+            config = {
+              EnvironmentVariables = {
+                DOCKER_HOST = "unix://${config.home.homeDirectory}/.colima/default/docker.sock";
+              };
+              ProgramArguments = [
+                "/bin/sh"
+                "-c"
+                "while ! ${pkgs.docker}/bin/docker info >/dev/null 2>&1; do sleep 1; done; if ${pkgs.docker}/bin/docker ps --format '{{.Names}}' | /usr/bin/grep -qx postgres; then ${pkgs.docker}/bin/docker logs -f postgres; elif ${pkgs.docker}/bin/docker container inspect postgres >/dev/null 2>&1; then ${pkgs.docker}/bin/docker start -a postgres; else ${pkgs.docker}/bin/docker run --name postgres -p 127.0.0.1:5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres -v postgres-data:/var/lib/postgresql/data postgres:17; fi"
+              ];
+              RunAtLoad = true;
+              KeepAlive = true;
+              StandardOutPath = "/tmp/postgres.log";
+              StandardErrorPath = "/tmp/postgres.err.log";
+            };
+          };
         })
       ];
     };
