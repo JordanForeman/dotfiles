@@ -192,6 +192,24 @@ export class WorkflowEngine {
     return this.engineState === "running" || this.engineState === "awaiting_phase";
   }
 
+  /** Abort the active workflow without evaluating more phase transitions. */
+  abort(ctx?: ExtensionContext, reason = "aborted"): void {
+    if (!this.isActive()) return;
+    this.engineState = "failed";
+    this.context.currentPhase = null;
+    this.pendingTaskOutputs = [];
+    this.pendingTasks = [];
+    this.expectedTaskCount = 0;
+
+    if (ctx?.hasUI) {
+      (ctx as { ui: ExtensionContext["ui"] }).ui.setStatus(`workflow-${this.definition.id}`, undefined);
+      (ctx as { ui: ExtensionContext["ui"] }).ui.notify(
+        `Workflow "${this.definition.name}" ${reason}.`,
+        "warning",
+      );
+    }
+  }
+
   // ── Context ──
 
   private createInitialContext(input: string): WorkflowContext {

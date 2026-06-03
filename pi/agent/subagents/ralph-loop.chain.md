@@ -3,6 +3,8 @@ name: ralph-loop
 description: One Ralph loop increment using planner, recon, implementer, validator, and historian roles.
 ---
 
+> Legacy/manual chain: Ralph v2 primary execution is the WorkflowEngine-backed `/ralph:start` flow (`ralph-groomer` → repeated `ralph-worker` → `ralph-summarizer`). This chain remains for explicit manual use only and is not invoked by `/ralph:start`.
+
 ## ralph-planner
 output: plan-step.md
 progress: true

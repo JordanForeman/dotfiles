@@ -50,6 +50,15 @@ Edit inside this repo, then apply Home Manager for the target machine:
 - Always-on extensions: `pi/agent/extensions/**`
 - Themes: `pi/agent/themes/*.json`
 
+## Ralph v2 Workflow
+
+`/ralph:start <objective> --iterations N` runs a compact WorkflowEngine flow:
+
+```text
+ralph-groomer → ralph-worker (up to N sequential increments) → ralph-summarizer
+```
+
+The parent Pi session only schedules phases and receives compact receipts/signals. Worker internals (planning, recon, implementation, validation, and history updates) stay inside `ralph-worker` and durable `.pi/ralph/` artifacts.
 ## Troubleshooting
 
 ### Agents not found

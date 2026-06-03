@@ -2,6 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { WorkflowExtensionCore } from "../extension-core/workflow-extension-core";
+import {
+  WorkflowEngine,
+  type OutputSummary,
+  type PhaseResult,
+  type WorkflowContext,
+  type WorkflowDefinition,
+} from "../extension-core/workflow-engine";
 
 type RalphPhase = "uninitialized" | "idle" | "planning" | "running" | "paused" | "stopped";
 
@@ -15,10 +22,13 @@ type RalphPolicy = {
     validate: number;
     plan: number;
   };
-  // NOTE: Engineering discipline (search-before-write, typecheck, tests, lint,
-  // security) is NOT configured here. It is ambient — delivered via the
-  // convention skills in pi/agent/skills/conventions/ and discovered per-project
-  // by the validation-discovery skill. This policy only shapes the loop itself.
+  gates: {
+    requireSearchBeforeWrite: boolean;
+    requireUnitOrScopedTests: boolean;
+    requireTypecheck: boolean;
+    requireLint: boolean;
+    requireSecurityScan: boolean;
+  };
   stopConditions: {
     maxConsecutiveFailures: number;
     maxMinutes: number;
@@ -66,6 +76,10 @@ const PLAN_FILE = "plan.md";
 const RUNBOOK_FILE = "runbook.md";
 const HISTORY_FILE = "history.jsonl";
 const LOCK_FILE = "lock.json";
+const BRIEF_FILE = "brief.md";
+const PROGRESS_FILE = "progress.md";
+const SUMMARY_FILE = "summary.md";
+const WORKERS_DIR = "workers";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -81,12 +95,17 @@ function ralphPaths(cwd: string) {
     runbook: path.join(root, RUNBOOK_FILE),
     history: path.join(root, HISTORY_FILE),
     lock: path.join(root, LOCK_FILE),
+    brief: path.join(root, BRIEF_FILE),
+    progress: path.join(root, PROGRESS_FILE),
+    summary: path.join(root, SUMMARY_FILE),
+    workers: path.join(root, WORKERS_DIR),
   };
 }
 
 function ensureRalphDir(cwd: string) {
   const paths = ralphPaths(cwd);
   fs.mkdirSync(paths.root, { recursive: true });
+  fs.mkdirSync(paths.workers, { recursive: true });
   return paths;
 }
 
@@ -111,9 +130,7 @@ function ensureTextFile(filePath: string, content: string) {
   if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, content, "utf8");
 }
 
-const DEFAULT_GOAL = "Deliver scoped increments one at a time until the objective is complete.";
-
-function defaultPolicy(goal = DEFAULT_GOAL): RalphPolicy {
+function defaultPolicy(goal = "Deliver scoped features with strict validation gates."): RalphPolicy {
   return {
     mode: "balanced",
     goal,
@@ -123,6 +140,13 @@ function defaultPolicy(goal = DEFAULT_GOAL): RalphPolicy {
       implement: 4,
       validate: 1,
       plan: 8,
+    },
+    gates: {
+      requireSearchBeforeWrite: true,
+      requireUnitOrScopedTests: true,
+      requireTypecheck: true,
+      requireLint: false,
+      requireSecurityScan: false,
     },
     stopConditions: {
       maxConsecutiveFailures: 3,
@@ -176,13 +200,14 @@ function summarizeState(state: RalphState): string {
 
 function ensureArtifacts(cwd: string, goal?: string) {
   const paths = ensureRalphDir(cwd);
-  const effectiveGoal = goal?.trim() || DEFAULT_GOAL;
+  const effectiveGoal = goal?.trim() || "Deliver scoped features with strict validation gates.";
 
   ensureTextFile(paths.plan, "# Ralph Plan\n\n- [ ] Seed backlog item\n");
   ensureTextFile(
     paths.runbook,
     "# Ralph Runbook\n\n## Build/Test Notes\n\n- Add known-good commands here as loops discover them.\n"
   );
+  ensureTextFile(paths.progress, "# Ralph Progress\n\n- No worker increments recorded yet.\n");
 
   if (!fs.existsSync(paths.policy)) {
     writeJsonFile(paths.policy, defaultPolicy(effectiveGoal));
@@ -212,9 +237,11 @@ function stripAllowMainFlag(args: string): { text: string; allowMain: boolean } 
   return { text, allowMain };
 }
 
-function parseStartFlowArgs(input: string): { objective: string; iterations: number } {
+function parseStartFlowArgs(input: string, policy?: RalphPolicy): { objective: string; iterations: number } {
   const match = input.match(/(?:--iterations|-n)\s+(\d+)/);
-  const iterations = match ? Math.max(1, Number(match[1])) : 3;
+  const requested = match ? Math.max(1, Number(match[1])) : 1;
+  const cap = Math.max(1, policy?.maxLoopsPerRun ?? requested);
+  const iterations = Math.min(requested, cap);
   const objective = input.replace(/(?:--iterations|-n)\s+\d+/, "").trim();
   return { objective, iterations };
 }
@@ -333,13 +360,268 @@ function registerRalphCommand(
   }
 }
 
+type RalphSignal = "RALPH_GROOMED" | "RALPH_WORKER_DONE" | "RALPH_COMPLETE" | "RALPH_BLOCKED" | "RALPH_SUMMARY_READY";
+
+const RALPH_SIGNALS: RalphSignal[] = [
+  "RALPH_GROOMED",
+  "RALPH_WORKER_DONE",
+  "RALPH_COMPLETE",
+  "RALPH_BLOCKED",
+  "RALPH_SUMMARY_READY",
+];
+
+function extractRalphSignal(text: string): RalphSignal | null {
+  const lineSignal = text.match(/(?:^|\n)\s*(RALPH_GROOMED|RALPH_WORKER_DONE|RALPH_COMPLETE|RALPH_BLOCKED|RALPH_SUMMARY_READY)\s*(?:\n|$)/);
+  if (lineSignal) return lineSignal[1] as RalphSignal;
+
+  for (const signal of ["RALPH_BLOCKED", "RALPH_COMPLETE", "RALPH_WORKER_DONE", "RALPH_GROOMED", "RALPH_SUMMARY_READY"] as RalphSignal[]) {
+    if (text.includes(signal)) return signal;
+  }
+  return null;
+}
+
+function extractSectionLine(text: string, label: string): string | null {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = text.match(new RegExp(`(?:^|\\n)\\s*${escaped}:\\s*(.+)`));
+  return match?.[1]?.trim() ?? null;
+}
+
+function compactRalphSummary(output: string): string {
+  const signal = extractRalphSignal(output);
+  const fields = [
+    "Increment",
+    "Changed files",
+    "Validation",
+    "Artifacts",
+    "Next priority",
+    "Blocker/decision needed",
+  ];
+  const lines = [signal, ...fields.map((field) => {
+    const value = extractSectionLine(output, field);
+    return value ? `${field}: ${value}` : null;
+  })].filter(Boolean) as string[];
+
+  if (lines.length > 0) return lines.join("\n");
+  return output.trim().split("\n").filter(Boolean).slice(0, 12).join("\n");
+}
+
+function summarizeRalphOutput({ output }: { output: string }): OutputSummary {
+  const verdict = extractRalphSignal(output) ?? undefined;
+  const artifactPath = output.match(/(?:Artifacts?|Output saved to):\s*(.+?)(?:\s*\(|\n|$)/i)?.[1]?.trim();
+  const topFindings = [
+    extractSectionLine(output, "Increment"),
+    extractSectionLine(output, "Validation"),
+    extractSectionLine(output, "Next priority"),
+    extractSectionLine(output, "Blocker/decision needed"),
+  ].filter(Boolean) as string[];
+
+  return {
+    verdict,
+    summary: compactRalphSummary(output),
+    topFindings,
+    artifactPath,
+  };
+}
+
+function firstReceiptSignal(result: PhaseResult): RalphSignal | null {
+  for (const output of result.outputs) {
+    const receiptSignal = output.receipt.verdict && extractRalphSignal(output.receipt.verdict);
+    if (receiptSignal) return receiptSignal;
+    const resultSignal = extractRalphSignal(output.result);
+    if (resultSignal) return resultSignal;
+  }
+  return null;
+}
+
+function formatRalphContext(context: WorkflowContext): string {
+  const workerReceipts = (context.state.workerReceipts as string[] | undefined) ?? [];
+  const parts = Object.entries(context.phases).map(([phaseId, result]) => {
+    const receipts = result.outputs.map((output) => [
+      `${phaseId}/${output.agent}`,
+      output.receipt.verdict ? `Signal: ${output.receipt.verdict}` : null,
+      output.receipt.artifactPath ? `Artifact: ${output.receipt.artifactPath}` : null,
+      output.result,
+    ].filter(Boolean).join("\n"));
+    return receipts.join("\n\n");
+  });
+
+  if (workerReceipts.length > 0) {
+    parts.push(`Worker receipts:\n${workerReceipts.join("\n\n")}`);
+  }
+
+  return parts.filter(Boolean).join("\n\n");
+}
+
+function createRalphWorkflow(opts: { cwd: string; runId: string; objective: string; iterations: number }): WorkflowDefinition {
+  return {
+    id: "ralph-loop",
+    name: "Ralph Loop",
+    description: "Groomed autonomous worker loop with compact receipts",
+    contextMode: "file-only",
+    contextBudget: {
+      compactOutputChars: 1200,
+      aggregateContextChars: 4000,
+      topFindings: 5,
+    },
+    summarizeOutput: summarizeRalphOutput,
+    initialize: (input) => ({
+      input,
+      state: {
+        runId: opts.runId,
+        maxIterations: opts.iterations,
+        workersRun: 0,
+        completed: false,
+        blocked: false,
+        workerReceipts: [],
+      },
+    }),
+    formatContext: formatRalphContext,
+    phases: [
+      {
+        id: "groom",
+        label: "🧹 Groom requirements",
+        execution: "sequential",
+        contextMode: "file-only",
+        tasks: [{
+          agent: "ralph-groomer",
+          task: [
+            `Ralph run: ${opts.runId}`,
+            "Objective: {input}",
+            `Durable artifacts: @${path.join(RALPH_DIR, POLICY_FILE)}, @${path.join(RALPH_DIR, PLAN_FILE)}, @${path.join(RALPH_DIR, RUNBOOK_FILE)}, @${path.join(RALPH_DIR, BRIEF_FILE)}`,
+            "",
+            "Groom the objective and repository/project artifacts into @.pi/ralph/brief.md.",
+            "Ask broad product/scope/safety questions only via contact_supervisor when available; otherwise emit RALPH_BLOCKED with the needed decision.",
+            "Do not implement. End with exactly one signal: RALPH_GROOMED or RALPH_BLOCKED.",
+          ].join("\n"),
+        }],
+        transition: {
+          type: "conditional",
+          decide: (result, context) => {
+            const signal = firstReceiptSignal(result);
+            context.state.blocked = signal !== "RALPH_GROOMED";
+            return signal === "RALPH_GROOMED" ? "worker" : "summarize";
+          },
+        },
+      },
+      {
+        id: "worker",
+        label: "🔁 Run Ralph worker",
+        execution: "sequential",
+        contextMode: "file-only",
+        tasks: (context) => [{
+          agent: "ralph-worker",
+          task: [
+            `Ralph run: ${opts.runId}`,
+            `Worker increment: ${((context.state.workersRun as number | undefined) ?? 0) + 1}/${opts.iterations}`,
+            "Objective: {input}",
+            "Grooming receipt:",
+            "{phase:groom}",
+            "Previous compact receipts:",
+            "{context}",
+            "",
+            "Run exactly one complete increment. Keep planning/recon/implementation/validation inside this worker session and durable .pi/ralph artifacts.",
+            "End with exactly one terminal signal: RALPH_WORKER_DONE, RALPH_COMPLETE, or RALPH_BLOCKED.",
+          ].join("\n"),
+        }],
+        transition: {
+          type: "loop",
+          until: (result, context, iteration) => {
+            const signal = firstReceiptSignal(result);
+            const shouldStop = result.status === "failed" || !signal || signal === "RALPH_COMPLETE" || signal === "RALPH_BLOCKED" || iteration >= opts.iterations;
+            context.state.workersRun = iteration;
+            context.state.completed = signal === "RALPH_COMPLETE";
+            context.state.blocked = result.status === "failed" || !signal || signal === "RALPH_BLOCKED";
+            const receipts = (context.state.workerReceipts as string[] | undefined) ?? [];
+            receipts.push(result.outputs.map((output) => output.result).join("\n"));
+            context.state.workerReceipts = receipts;
+            appendHistory(opts.cwd, {
+              ts: nowIso(),
+              runId: opts.runId,
+              action: "worker",
+              phase: "running",
+              detail: { iteration, signal: signal ?? "missing", status: result.status },
+            });
+            return shouldStop;
+          },
+        },
+      },
+      {
+        id: "summarize",
+        label: "📝 Summarize Ralph run",
+        execution: "sequential",
+        contextMode: "file-only",
+        tasks: [{
+          agent: "ralph-summarizer",
+          task: [
+            `Finalize Ralph run ${opts.runId}.`,
+            "Objective: {input}",
+            "Workflow compact receipts:",
+            "{context}",
+            "",
+            "Review @.pi/ralph/*, current diff, and worker artifacts. Write @.pi/ralph/summary.md and emit RALPH_SUMMARY_READY.",
+          ].join("\n"),
+        }],
+        summarizeOutput: (input) => {
+          const summary = summarizeRalphOutput(input);
+          const state = loadState(opts.cwd);
+          const nextPhase: RalphPhase = summary.verdict === "RALPH_SUMMARY_READY" ? "idle" : "stopped";
+          saveState(opts.cwd, {
+            ...state,
+            phase: nextPhase,
+            currentRunId: null,
+            paused: false,
+          });
+          clearLock(opts.cwd);
+          appendHistory(opts.cwd, {
+            ts: nowIso(),
+            runId: opts.runId,
+            action: "summarize",
+            phase: nextPhase,
+            detail: { workersRun: input.context.state.workersRun, completed: input.context.state.completed, blocked: input.context.state.blocked },
+          });
+          return summary;
+        },
+        transition: { type: "advance" },
+      },
+    ],
+  };
+}
+
 function registerRalphLoop(pi: ExtensionAPI) {
-  registerRalphCommand(pi, "ralph:start", "Start the Ralph loop over the existing plan (use /ralph:plan first)", async (args, ctx) => {
+  let startEngine: WorkflowEngine | null = null;
+  registerRalphCommand(pi, "ralph:init", "Initialize Ralph loop policy and state files", async (args, ctx) => {
+    const parsed = stripAllowMainFlag(args);
+    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+
+    ensureArtifacts(ctx.cwd, parsed.text);
+    const state = loadState(ctx.cwd);
+    const goal = parsed.text || state.objective || "Deliver scoped features with strict validation gates.";
+
+    const nextState: RalphState = {
+      ...state,
+      phase: "idle",
+      currentRunId: null,
+      objective: goal,
+      paused: false,
+    };
+
+    saveState(ctx.cwd, nextState);
+    clearLock(ctx.cwd);
+    appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "init", phase: nextState.phase, detail: { goal } });
+    ctx.ui.notify(`Ralph initialized: ${summarizeState(nextState)}`, "success");
+  });
+
+  registerRalphCommand(pi, "ralph:start", "Start Ralph v2 workflow (groom → worker loop → summarize)", async (args, ctx) => {
     const parsed = stripAllowMainFlag(args);
     if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
 
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
+
+    if (startEngine?.isActive()) {
+      ctx.ui.notify("A Ralph workflow is already running. Wait for it to complete or stop it first.", "warning");
+      return;
+    }
 
     let effectiveState = state;
 
@@ -369,7 +651,8 @@ function registerRalphLoop(pi: ExtensionAPI) {
     }
 
 
-    const startFlow = parseStartFlowArgs(parsed.text);
+    const policy = readJsonFile(ralphPaths(ctx.cwd).policy, defaultPolicy(effectiveState.objective));
+    const startFlow = parseStartFlowArgs(parsed.text, policy);
     const runId = `R-${String(effectiveState.runCount + 1).padStart(4, "0")}`;
     const objective = startFlow.objective || effectiveState.objective || "Execute top priority plan item";
     const iterations = startFlow.iterations;
@@ -397,27 +680,10 @@ function registerRalphLoop(pi: ExtensionAPI) {
       detail: { objective, iterations },
     });
 
-    const orchestratorPrompt = [
-      `You are starting Ralph run ${runId}.`,
-      `High-level objective: ${objective}`,
-      `Loop iterations to execute: ${iterations}`,
-      `Artifacts: @${path.join(RALPH_DIR, PLAN_FILE)}, @${path.join(RALPH_DIR, RUNBOOK_FILE)}`,
-      "This is the LOOP. The breakdown already exists in @.pi/ralph/plan.md",
-      "(produced by /ralph:plan). Do not re-plan the objective here.",
-      "Engineering discipline (search-before-write, validation, tests) is ambient —",
-      "the subagents already carry it. Your only job is to sequence increments.",
-      "Loop:",
-      "1) Read @.pi/ralph/plan.md and select the single highest-priority incomplete increment.",
-      "2) If the plan is empty or missing, stop and tell the user to run /ralph:plan first.",
-      "3) Execute exactly that one increment via /chain ralph-loop.",
-      "4) After the increment, ensure @.pi/ralph/plan.md and @.pi/ralph/runbook.md reflect the result.",
-      "5) Repeat from step 1 until all increments are complete or the iteration budget is exhausted.",
-      "6) Never execute more than one increment per iteration.",
-      "Begin now.",
-    ].join("\n");
 
-    dispatchCommand(pi, ctx, orchestratorPrompt);
-    ctx.ui.notify(`Ralph flow started (${runId})`, "info");
+    startEngine = new WorkflowEngine(pi, createRalphWorkflow({ cwd: ctx.cwd, runId, objective, iterations }));
+    startEngine.start(objective, ctx);
+    ctx.ui.notify(`Ralph workflow started (${runId}, ${iterations} worker${iterations === 1 ? "" : "s"} max)`, "info");
   });
 
   registerRalphCommand(pi, "ralph:plan", "Refresh Ralph plan using planner subagent", async (args, ctx) => {
@@ -471,6 +737,7 @@ function registerRalphLoop(pi: ExtensionAPI) {
       ctx.ui.notify("No active run to retry.", "warning");
       return;
     }
+    const retryRunId = state.currentRunId;
 
     const nextState: RalphState = {
       ...state,
@@ -484,18 +751,18 @@ function registerRalphLoop(pi: ExtensionAPI) {
     }
 
     saveState(ctx.cwd, nextState);
-    upsertLock(ctx.cwd, "retry", nextState.currentRunId);
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "retry", phase: nextState.phase });
+    upsertLock(ctx.cwd, "retry", retryRunId);
+    appendHistory(ctx.cwd, { ts: nowIso(), runId: retryRunId, action: "retry", phase: nextState.phase });
 
     const implementTask = quote([
-      `Retry run ${nextState.currentRunId}`,
+      `Retry run ${retryRunId}`,
       `Objective: ${nextState.objective}`,
       `Plan source: @${path.join(RALPH_DIR, PLAN_FILE)}`,
       "Implement only one highest-priority incomplete item.",
     ].join("\n"));
 
     const validateTask = quote(
-      `Validate retry run ${nextState.currentRunId} against the project's own discovered validation contract and classify failures clearly.`
+      `Validate retry run ${retryRunId} against required gates and classify failures clearly.`
     );
 
     dispatchCommand(
@@ -504,7 +771,7 @@ function registerRalphLoop(pi: ExtensionAPI) {
       `/chain ${nextState.agentMap.implement} "${implementTask}" -> ${nextState.agentMap.validate} "${validateTask}"`
     );
 
-    ctx.ui.notify(`Retry chain dispatched for ${nextState.currentRunId}`, "info");
+    ctx.ui.notify(`Retry chain dispatched for ${retryRunId}`, "info");
   });
 
   registerRalphCommand(pi, "ralph:pause", "Pause Ralph loop execution", async (args, ctx) => {
@@ -521,7 +788,9 @@ function registerRalphLoop(pi: ExtensionAPI) {
     const nextState: RalphState = { ...state, phase: "paused", paused: true };
 
     saveState(ctx.cwd, nextState);
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "pause", phase: nextState.phase });
+    appendHistory(ctx.cwd, { ts: nowIso(), runId: state.currentRunId, action: "pause", phase: nextState.phase });
+    startEngine?.abort(ctx, "paused");
+    startEngine = null;
 
     ctx.abort();
     ctx.ui.notify("Ralph paused", "warning");
@@ -543,27 +812,31 @@ function registerRalphLoop(pi: ExtensionAPI) {
       ctx.ui.notify("No paused run to resume.", "warning");
       return;
     }
+    const runId = state.currentRunId;
 
     if (lockConflicts(ctx.cwd, state)) {
       ctx.ui.notify("Ralph lock is owned by another run in this worktree.", "warning");
       return;
     }
 
-    const nextState: RalphState = { ...state, phase: "running", paused: false };
+    if (startEngine?.isActive()) {
+      ctx.ui.notify("A Ralph workflow is already running. Wait for it to complete or stop it first.", "warning");
+      return;
+    }
+
+    const policy = readJsonFile(ralphPaths(ctx.cwd).policy, defaultPolicy(state.objective));
+    const resumeFlow = parseStartFlowArgs(parsed.text, policy);
+    const objective = resumeFlow.objective || state.objective || "Continue top priority plan item";
+    const iterations = resumeFlow.iterations;
+    const nextState: RalphState = { ...state, phase: "running", paused: false, objective };
     saveState(ctx.cwd, nextState);
-    upsertLock(ctx.cwd, "resume", nextState.currentRunId);
+    upsertLock(ctx.cwd, "resume", runId);
 
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "resume", phase: nextState.phase });
+    appendHistory(ctx.cwd, { ts: nowIso(), runId: runId, action: "resume", phase: nextState.phase, detail: { objective, iterations } });
 
-    const task = [
-      `Resume run ${nextState.currentRunId}`,
-      `Objective: ${nextState.objective}`,
-      `Plan: @${path.join(RALPH_DIR, PLAN_FILE)}`,
-      "Continue with the top incomplete item and validate before completion.",
-    ].join("\n");
-
-    dispatchCommand(pi, ctx, `/chain ${nextState.agentMap.chain} "${quote(task)}"`);
-    ctx.ui.notify(`Ralph resumed (${nextState.currentRunId})`, "info");
+    startEngine = new WorkflowEngine(pi, createRalphWorkflow({ cwd: ctx.cwd, runId: runId, objective, iterations }));
+    startEngine.start(objective, ctx);
+    ctx.ui.notify(`Ralph resumed (${runId}, ${iterations} worker${iterations === 1 ? "" : "s"} max)`, "info");
   });
 
   registerRalphCommand(pi, "ralph:stop", "Stop Ralph loop execution", async (args, ctx) => {
@@ -582,6 +855,8 @@ function registerRalphLoop(pi: ExtensionAPI) {
     saveState(ctx.cwd, nextState);
     clearLock(ctx.cwd);
     appendHistory(ctx.cwd, { ts: nowIso(), runId: state.currentRunId, action: "stop", phase: nextState.phase });
+    startEngine?.abort(ctx, "stopped");
+    startEngine = null;
 
     ctx.abort();
     ctx.ui.notify("Ralph stopped", "warning");
@@ -590,7 +865,7 @@ function registerRalphLoop(pi: ExtensionAPI) {
   registerRalphCommand(pi, "ralph:status", "Show current Ralph state", async (_args, ctx) => {
     const paths = ralphPaths(ctx.cwd);
     if (!fs.existsSync(paths.state)) {
-      ctx.ui.notify("Ralph has no state in this worktree yet. Run /ralph:plan or /ralph:start first.", "warning");
+      ctx.ui.notify("Ralph is not initialized in this worktree. Run /ralph:init first.", "warning");
       return;
     }
 
@@ -603,7 +878,7 @@ function registerRalphLoop(pi: ExtensionAPI) {
   registerRalphCommand(pi, "ralph:report", "Generate a concise report of Ralph loop activity", async (_args, ctx) => {
     const paths = ralphPaths(ctx.cwd);
     if (!fs.existsSync(paths.state)) {
-      ctx.ui.notify("Ralph has no state in this worktree yet. Run /ralph:plan or /ralph:start first.", "warning");
+      ctx.ui.notify("Ralph is not initialized in this worktree. Run /ralph:init first.", "warning");
       return;
     }
 
@@ -644,7 +919,7 @@ class RalphLoopExtension extends WorkflowExtensionCore {
     super(pi, {
       id: "ralph-loop",
       name: "Ralph Loop",
-      summary: "Stateful iterative execution workflow",
+      summary: "Groomed autonomous worker loop with compact receipts",
     });
   }
 
