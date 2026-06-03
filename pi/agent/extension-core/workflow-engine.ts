@@ -8,6 +8,36 @@ import type {
 
 /** How a phase executes its tasks */
 export type PhaseExecution = "sequential" | "parallel";
+export type PhaseContextMode = "full" | "compact" | "file-only" | "none";
+
+export interface WorkflowContextBudget {
+  /** Max characters kept for one compacted subagent output */
+  compactOutputChars: number;
+  /** Max characters injected for the aggregate {context} placeholder */
+  aggregateContextChars: number;
+  /** Max extracted finding bullets kept per output receipt */
+  topFindings: number;
+}
+
+export interface OutputSummary {
+  /** Compact text injected into later phase context */
+  summary?: string;
+  /** High-level pass/fail/needs-more-info style signal */
+  verdict?: string;
+  /** Most important findings surfaced in receipts */
+  topFindings?: string[];
+  /** Artifact containing the full output, when available */
+  artifactPath?: string;
+}
+
+export type SummarizeOutputHook = (input: {
+  phase: PhaseDefinition;
+  task?: PhaseTask;
+  output: string;
+  agent: string;
+  status: TaskOutput["status"];
+  context: WorkflowContext;
+}) => string | OutputSummary | undefined;
 
 /** What happens after a phase completes */
 export type TransitionRule =
@@ -23,6 +53,8 @@ export interface PhaseTask {
   task: string;
   /** Optional skills to inject into the subagent */
   skill?: string[];
+  /** Optional name used in receipts when a tool result does not include the agent */
+  label?: string;
 }
 
 /** Definition of one workflow phase */
@@ -37,13 +69,30 @@ export interface PhaseDefinition {
   tasks: PhaseTask[] | ((context: WorkflowContext) => PhaseTask[]);
   /** What happens after this phase completes */
   transition: TransitionRule;
+  /** How much of this phase's outputs should be reinjected into later phases */
+  contextMode?: PhaseContextMode;
+  /** Optional phase-specific output summarizer/receipt extractor */
+  summarizeOutput?: SummarizeOutputHook;
+  /** Optional overrides for this phase's compaction/truncation budget */
+  contextBudget?: Partial<WorkflowContextBudget>;
+}
+
+/** Compact receipt for one subagent dispatch */
+export interface TaskReceipt {
+  agent: string;
+  status: "success" | "error";
+  artifactPath?: string;
+  verdict?: string;
+  topFindings: string[];
 }
 
 /** Output from a single subagent dispatch */
 export interface TaskOutput {
   agent: string;
+  /** Context-sized result according to the phase contextMode */
   result: string;
   status: "success" | "error";
+  receipt: TaskReceipt;
 }
 
 /** Result from executing a complete phase */
@@ -81,6 +130,12 @@ export interface WorkflowDefinition {
   initialize?: (input: string) => Partial<WorkflowContext>;
   /** Optional: custom context formatting for {context} placeholder */
   formatContext?: (context: WorkflowContext) => string;
+  /** Default context mode for phases that do not specify one */
+  contextMode?: PhaseContextMode;
+  /** Default compaction/truncation budget */
+  contextBudget?: Partial<WorkflowContextBudget>;
+  /** Optional workflow-wide output summarizer/receipt extractor */
+  summarizeOutput?: SummarizeOutputHook;
 }
 
 type EngineState = "idle" | "running" | "awaiting_phase" | "completed" | "failed";
@@ -95,6 +150,7 @@ export class WorkflowEngine {
   private expectedTaskCount = 0;
   private loopIterations: Record<string, number> = {};
   private unsubscribers: Array<() => void> = [];
+  private pendingTasks: PhaseTask[] = [];
 
   constructor(
     private readonly pi: ExtensionAPI,
@@ -191,12 +247,23 @@ export class WorkflowEngine {
     if (!this.isActive()) return;
     if (event.toolName !== "subagent") return;
 
-    const resultText = extractResultText(event.result);
-    this.pendingTaskOutputs.push({
-      agent: extractAgentName(event.result) ?? "unknown",
-      result: resultText,
-      status: event.isError ? "error" : "success",
-    });
+    const phase = this.definition.phases.find((p) => p.id === this.context.currentPhase);
+    if (!phase) return;
+
+    const rawOutput = extractResultText(event.result);
+    const taskIndex = this.pendingTaskOutputs.length;
+    const task = this.pendingTasks[taskIndex];
+    const agent = extractAgentName(event.result) ?? this.fallbackAgentName(phase, task) ?? "unknown";
+    this.pendingTaskOutputs.push(
+      this.compactTaskOutput({
+        phase,
+        task,
+        rawOutput,
+        agent,
+        status: event.isError ? "error" : "success",
+        toolResult: event.result,
+      }),
+    );
 
     this.updatePhaseProgress();
   }
@@ -227,9 +294,11 @@ export class WorkflowEngine {
     this.engineState = "awaiting_phase";
     this.phaseStartTime = performance.now();
     this.pendingTaskOutputs = [];
+    this.pendingTasks = [];
 
     const tasks = typeof phase.tasks === "function" ? phase.tasks(this.context) : phase.tasks;
     this.expectedTaskCount = tasks.length;
+    this.pendingTasks = tasks;
 
     if (!this.loopIterations[phaseId]) {
       this.loopIterations[phaseId] = 0;
@@ -437,34 +506,110 @@ export class WorkflowEngine {
     // {input} → original user input
     result = result.replace(/\{input\}/g, this.context.input);
 
-    // {context} → formatted accumulated findings
+    // {context} → bounded accumulated findings by default
     result = result.replace(/\{context\}/g, this.formatFindings());
 
-    // {phase:<id>} → output from a specific phase
-    result = result.replace(/\{phase:(\w+)\}/g, (_match, phaseId: string) => {
+    // {phase:<id>} → context-sized output from a specific phase
+    result = result.replace(/\{phase:([\w-]+)\}/g, (_match, phaseId: string) => {
       const phaseResult = this.context.phases[phaseId];
       if (!phaseResult) return `(phase "${phaseId}" has not run yet)`;
-      return phaseResult.outputs.map((o) => `[${o.agent}]: ${o.result}`).join("\n\n");
+      return this.formatPhaseForTemplate(phaseId, phaseResult);
     });
 
     return result;
   }
 
   private formatFindings(): string {
-    if (this.definition.formatContext) {
-      return this.definition.formatContext(this.context);
-    }
+    const formatted = this.definition.formatContext
+      ? this.definition.formatContext(this.context)
+      : Object.entries(this.context.phases)
+        .map(([phaseId, result]) => this.formatPhaseResult(phaseId, result))
+        .filter(Boolean)
+        .join("\n\n");
 
-    const sections: string[] = [];
-    for (const [phaseId, result] of Object.entries(this.context.phases)) {
-      const phase = this.definition.phases.find((p) => p.id === phaseId);
-      const label = phase?.label ?? phaseId;
-      for (const output of result.outputs) {
-        sections.push(`### ${label} — ${output.agent}\n${output.result}`);
-      }
-    }
+    return truncateText(formatted || "(no findings yet)", this.contextBudget().aggregateContextChars);
+  }
 
-    return sections.join("\n\n") || "(no findings yet)";
+  private formatPhaseResult(phaseId: string, result: PhaseResult): string {
+    const phase = this.definition.phases.find((p) => p.id === phaseId);
+    const label = phase?.label ?? phaseId;
+    const sections = result.outputs.map((output) => `### ${label} — ${output.agent}\n${output.result}`);
+    return sections.join("\n\n");
+  }
+
+  private formatPhaseForTemplate(phaseId: string, result: PhaseResult): string {
+    const phase = this.definition.phases.find((p) => p.id === phaseId);
+    const formatted = this.formatPhaseResult(phaseId, result);
+    const mode = phase?.contextMode ?? this.definition.contextMode ?? "compact";
+    if (mode === "full") return formatted;
+    return truncateText(formatted, this.contextBudget(phase).aggregateContextChars);
+  }
+
+  private compactTaskOutput(input: {
+    phase: PhaseDefinition;
+    task?: PhaseTask;
+    rawOutput: string;
+    agent: string;
+    status: TaskOutput["status"];
+    toolResult: unknown;
+  }): TaskOutput {
+    const budget = this.contextBudget(input.phase);
+    const mode = input.phase.contextMode ?? this.definition.contextMode ?? "compact";
+    const defaultSummary = summarizeText(input.rawOutput, budget.compactOutputChars);
+    const hookSummary = input.phase.summarizeOutput?.({
+      phase: input.phase,
+      task: input.task,
+      output: input.rawOutput,
+      agent: input.agent,
+      status: input.status,
+      context: this.context,
+    }) ?? this.definition.summarizeOutput?.({
+      phase: input.phase,
+      task: input.task,
+      output: input.rawOutput,
+      agent: input.agent,
+      status: input.status,
+      context: this.context,
+    });
+
+    const normalized = clampSummary(normalizeSummary(hookSummary), budget);
+    const receipt: TaskReceipt = {
+      agent: input.agent,
+      status: input.status,
+      artifactPath: normalized.artifactPath ?? extractArtifactPath(input.toolResult) ?? extractArtifactPath(input.rawOutput) ?? undefined,
+      verdict: normalized.verdict ?? extractVerdict(input.rawOutput) ?? undefined,
+      topFindings: normalized.topFindings ?? extractTopFindings(input.rawOutput, budget.topFindings),
+    };
+
+    const compactResult = renderCompactResult(receipt, normalized.summary ?? defaultSummary);
+    const receiptOnly = renderReceipt(receipt);
+    const result = mode === "full"
+      ? input.rawOutput
+      : mode === "compact"
+        ? compactResult
+        : mode === "file-only"
+          ? receiptOnly
+          : "(output omitted by phase contextMode: none)";
+
+    return {
+      agent: input.agent,
+      result,
+      status: input.status,
+      receipt,
+    };
+  }
+
+  private contextBudget(phase?: PhaseDefinition): WorkflowContextBudget {
+    return {
+      ...DEFAULT_CONTEXT_BUDGET,
+      ...this.definition.contextBudget,
+      ...phase?.contextBudget,
+    };
+  }
+
+  private fallbackAgentName(phase: PhaseDefinition, task?: PhaseTask): string | null {
+    if (phase.execution === "parallel") return null;
+    return task?.label ?? task?.agent ?? null;
   }
 
   // ── UI ──
@@ -490,6 +635,12 @@ export class WorkflowEngine {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+const DEFAULT_CONTEXT_BUDGET: WorkflowContextBudget = {
+  compactOutputChars: 4000,
+  aggregateContextChars: 12000,
+  topFindings: 5,
+};
+
 
 function extractResultText(result: unknown): string {
   if (typeof result === "string") return result;
@@ -521,6 +672,106 @@ function extractAgentName(result: unknown): string | null {
   }
   return null;
 }
+function normalizeSummary(summary: string | OutputSummary | undefined): OutputSummary {
+  if (typeof summary === "string") return { summary };
+  return summary ?? {};
+}
+
+function clampSummary(summary: OutputSummary, budget: WorkflowContextBudget): OutputSummary {
+  return {
+    ...summary,
+    summary: summary.summary ? truncateText(summary.summary, budget.compactOutputChars) : undefined,
+    topFindings: summary.topFindings
+      ?.slice(0, budget.topFindings)
+      .map((finding) => truncateText(finding, 240)),
+  };
+}
+
+function summarizeText(text: string, maxChars: number): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "(no output)";
+  return truncateText(trimmed, maxChars);
+}
+
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  const omitted = text.length - maxChars;
+  return `${text.slice(0, Math.max(0, maxChars)).trimEnd()}\n\n…[truncated ${omitted} chars]`;
+}
+
+function renderCompactResult(receipt: TaskReceipt, summary: string): string {
+  const parts = [renderReceipt(receipt)];
+  if (summary) {
+    parts.push("", "Summary:", summary);
+  }
+  return parts.join("\n");
+}
+
+function renderReceipt(receipt: TaskReceipt): string {
+  const lines = [
+    `Receipt: ${receipt.agent} — ${receipt.status}`,
+    ...(receipt.artifactPath ? [`Artifact: ${receipt.artifactPath}`] : []),
+    ...(receipt.verdict ? [`Verdict: ${receipt.verdict}`] : []),
+  ];
+
+  if (receipt.topFindings.length > 0) {
+    lines.push("Top findings:");
+    for (const finding of receipt.topFindings) {
+      lines.push(`- ${finding}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function extractArtifactPath(result: unknown): string | null {
+  if (typeof result === "string") {
+    return result.match(/Output saved to:\s*(.+?)(?:\s*\(|$)/)?.[1]?.trim() ?? null;
+  }
+
+  if (result && typeof result === "object") {
+    const r = result as Record<string, unknown>;
+    for (const key of ["artifactPath", "outputPath", "path"]) {
+      if (typeof r[key] === "string") return r[key];
+    }
+    if (typeof r.text === "string") return extractArtifactPath(r.text);
+    if (typeof r.content === "string") return extractArtifactPath(r.content);
+    if (Array.isArray(r.content)) {
+      for (const item of r.content) {
+        if (item && typeof item === "object") {
+          const text = (item as Record<string, unknown>).text;
+          if (typeof text === "string") {
+            const path = extractArtifactPath(text);
+            if (path) return path;
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractVerdict(text: string): string | null {
+  const marker = text.match(/NEEDS_FURTHER_INVESTIGATION:\s*(.+)/);
+  if (marker) return `NEEDS_FURTHER_INVESTIGATION: ${marker[1].trim()}`;
+
+  const verdict = text.match(/(?:^|\n)\s*(?:Verdict|Status|Result):\s*(.+)/i);
+  return verdict?.[1]?.trim() ?? null;
+}
+
+function extractTopFindings(text: string, maxFindings: number): string[] {
+  const findings: string[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    const bullet = trimmed.match(/^(?:[-*•]|\d+\.)\s+(.+)/)?.[1]?.trim();
+    if (!bullet) continue;
+    findings.push(truncateText(bullet, 240));
+    if (findings.length >= maxFindings) break;
+  }
+  return findings;
+}
+
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;

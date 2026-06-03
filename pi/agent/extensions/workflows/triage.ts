@@ -65,8 +65,10 @@ const TRIAGE_WORKFLOW: WorkflowDefinition = {
       transition: {
         type: "conditional",
         decide: (result, context) => {
-          const output = result.outputs[0]?.result ?? "";
-          const needsMore = output.includes("NEEDS_FURTHER_INVESTIGATION");
+          const output = result.outputs[0];
+          const needsMore = [output?.result, output?.receipt.verdict]
+            .filter(Boolean)
+            .some((text) => text?.includes("NEEDS_FURTHER_INVESTIGATION"));
           const round = (context.state.investigationRound as number ?? 0) + 1;
 
           if (needsMore && round < MAX_INVESTIGATION_ROUNDS) {

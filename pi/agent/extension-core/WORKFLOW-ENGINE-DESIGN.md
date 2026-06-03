@@ -88,7 +88,8 @@ User ──/tdd──▶ Prompt ──triggers──▶ WorkflowExtension ──
 - System prompt injection for current phase instructions
 - Event-based phase completion detection
 - Phase lifecycle (enter → LLM executes → exit, with status tracking)
-- Context accumulation (phase results flow to subsequent phases)
+- Context accumulation with bounded output compaction by default
+- Phase receipts (agent, status, artifact path, verdict, top findings)
 - UI affordances (status bar, phase progress, notifications)
 - Transition enforcement (advance / conditional / loop)
 
@@ -118,13 +119,23 @@ interface PhaseTask {
   skill?: string[];        // optional skills to inject
 }
 
-/** Definition of one workflow phase */
+interface WorkflowContextBudget {
+  compactOutputChars: number;
+  aggregateContextChars: number;
+  topFindings: number;
+}
+
+type PhaseContextMode = "full" | "compact" | "file-only" | "none";
+
 interface PhaseDefinition {
   id: string;              // unique within this workflow
   label: string;           // human-readable, shown in UI
   execution: PhaseExecution;
   tasks: PhaseTask[] | ((context: WorkflowContext) => PhaseTask[]);
   transition: TransitionRule;
+  contextMode?: PhaseContextMode; // default: compact
+  summarizeOutput?: SummarizeOutputHook;
+  contextBudget?: Partial<WorkflowContextBudget>;
 }
 
 /** Result from executing a phase */
@@ -135,11 +146,19 @@ interface PhaseResult {
   durationMs: number;
 }
 
-/** Output from a single task dispatch */
+interface TaskReceipt {
+  agent: string;
+  status: "success" | "error";
+  artifactPath?: string;
+  verdict?: string;
+  topFindings: string[];
+}
+
 interface TaskOutput {
   agent: string;
-  result: string;          // subagent's response text
+  result: string;          // context-sized according to contextMode
   status: "success" | "error";
+  receipt: TaskReceipt;
 }
 
 /** Accumulated state across phases — the engine's runtime memory */
@@ -164,9 +183,12 @@ interface WorkflowDefinition {
   phases: PhaseDefinition[];
   /** Optional: custom context initialization */
   initialize?: (input: string) => Partial<WorkflowContext>;
-  /** Optional: format context for injection into task templates */
+  /** Optional: format context for injection into task templates. Result is still bounded. */
   formatContext?: (context: WorkflowContext) => string;
-}
+  /** Optional: workflow defaults for output compaction */
+  contextMode?: PhaseContextMode;
+  contextBudget?: Partial<WorkflowContextBudget>;
+  summarizeOutput?: SummarizeOutputHook;
 ```
 
 ## Engine Lifecycle
@@ -238,19 +260,16 @@ pi.on("tool_execution_end", (event) => {
   if (event.toolName !== "subagent") return;
   if (!this.context.currentPhase) return;
 
-  // Extract result from the subagent tool's output
-  const output = extractSubagentResult(event.result);
+  // Extract and compact the subagent tool output
+  const output = compactTaskOutput(event.result, phase.contextMode ?? "compact");
 
-  // Record phase result
+  // Record phase result with a bounded result plus receipt metadata
   this.context.phases[this.context.currentPhase] = {
     phaseId: this.context.currentPhase,
     status: event.isError ? "failed" : "completed",
-    outputs: [{ agent: "...", result: output, status: event.isError ? "error" : "success" }],
+    outputs: [output],
     durationMs: /* tracked from phase start */,
   };
-
-  // Update accumulated findings
-  this.context.findings = this.formatFindings();
 });
 ```
 
