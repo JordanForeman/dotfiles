@@ -47,6 +47,29 @@
     # Common Home Manager configuration (macOS + Linux)
     homeManagerCommonModules = [ ./nix/home/common.nix ];
 
+    # Project Ruby version management via mise for personal machines only.
+    miseRubyModule = { pkgs, ... }: {
+      home.sessionVariables.MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS = "ruby";
+
+      # Build dependencies used by mise/ruby-build when installing project Ruby versions.
+      home.packages = with pkgs; [
+        libyaml
+        pkg-config
+        readline
+        zlib
+      ];
+
+      # Sourced by .zshrc on selected hosts only.
+      home.file.".config/dotfiles/shell/mise-ruby.zsh".text = ''
+        # Project Ruby version management via mise
+        export MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS="ruby"
+
+        if command -v mise >/dev/null 2>&1; then
+          eval "$(mise activate zsh)"
+        fi
+      '';
+    };
+
     mkDarwin = extraHmModules: nix-darwin.lib.darwinSystem {
       system = "aarch64-darwin";
       modules = [
@@ -119,11 +142,12 @@
   {
     # macOS configurations
     darwinConfigurations = {
-      "personal-macbook" = mkDarwin [ ./nix/home/darwin.nix ./nix/home/personal-npm.nix ];
+      "personal-macbook" = mkDarwin [ ./nix/home/darwin.nix ./nix/home/personal-npm.nix miseRubyModule ];
       "work-macbook" = mkDarwin [ ./nix/home/darwin.nix ];
       "Jordans-MacBook-Pro" = mkDarwin [
         ./nix/home/darwin.nix
         ./nix/home/personal-npm.nix
+        miseRubyModule
         ({ config, pkgs, ... }: {
           home.packages = [
             pkgs.docker
@@ -195,6 +219,7 @@
           }
         ] ++ homeManagerCommonModules ++ [
           ./nix/home/omarchy.nix
+          miseRubyModule
         ];
       };
 

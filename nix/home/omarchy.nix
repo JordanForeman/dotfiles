@@ -23,6 +23,12 @@
       # home-manager wrapper location
       export PATH="$HOME/.local/bin:$PATH"
 
+      # Project Ruby version management via mise
+      export MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS="ruby"
+      if command -v mise >/dev/null 2>&1; then
+        eval "$(mise activate bash)"
+      fi
+
       # Omarchy bash layer
       if [ -f "$HOME/.local/share/omarchy/default/bash/rc" ]; then
         . "$HOME/.local/share/omarchy/default/bash/rc"

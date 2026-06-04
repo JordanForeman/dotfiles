@@ -119,6 +119,11 @@ export PATH="$HOME/.npm-global/bin:$BUN_INSTALL/bin:$PATH"
 export GOPATH=$HOME/go
 export PATH=$PATH:$GOPATH/bin
 
+# Dotfiles-managed shell fragments (host-specific)
+for fragment in "$HOME"/.config/dotfiles/shell/*.zsh(N); do
+    source "$fragment"
+done
+
 # Machine-specific configuration (not in dotfiles)
 # Create ~/.zshrc.local for work-specific initialization, custom paths, etc.
 [[ -f ~/.zshrc.local ]] && source ~/.zshrc.local
