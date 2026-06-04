@@ -129,6 +129,8 @@
           "macwhisper"
         ];
         onActivation.cleanup = "zap";
+        # Homebrew requires explicit confirmation for cleanup as of newer versions.
+        onActivation.extraFlags = [ "--force-cleanup" ];
       };
 
       system.primaryUser = "jordan";
