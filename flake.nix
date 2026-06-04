@@ -157,7 +157,7 @@
             pkgs.postgresql.pg_config
             pkgs.libpq
             (pkgs.writeShellScriptBin "caffeinate" ''
-              exec /usr/bin/caffeinate "$@"
+              exec /usr/bin/caffeinate -im "$@"
             '')
           ];
 
