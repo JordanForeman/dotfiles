@@ -59,6 +59,8 @@ ralph-groomer → ralph-worker (up to N sequential increments) → ralph-summari
 ```
 
 The parent Pi session only schedules phases and receives compact receipts/signals. Worker internals (planning, recon, implementation, validation, and history updates) stay inside `ralph-worker` and durable `.pi/ralph/` artifacts.
+
+Exposed commands are intentionally small: `/ralph:start`, `/ralph:status`, `/ralph:stop`, and `/ralph:report`. Start creates/updates required `.pi/ralph/` state automatically.
 ## Troubleshooting
 
 ### Agents not found

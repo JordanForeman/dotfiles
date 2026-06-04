@@ -66,7 +66,7 @@ type RalphLock = {
   runId: string | null;
   createdAt: string;
   updatedAt: string;
-  command: "start" | "resume" | "retry";
+  command: "start";
 };
 
 const RALPH_DIR = path.join(".pi", "ralph");
@@ -230,11 +230,8 @@ function ensureArtifacts(cwd: string, goal?: string) {
   return paths;
 }
 
-function stripAllowMainFlag(args: string): { text: string; allowMain: boolean } {
-  const trimmed = args.trim();
-  const allowMain = trimmed === "--allow-main" || trimmed.startsWith("--allow-main ");
-  const text = allowMain ? trimmed.replace(/^--allow-main\s*/, "").trim() : trimmed;
-  return { text, allowMain };
+function parseRalphArgs(args: string): { text: string } {
+  return { text: args.trim() };
 }
 
 function parseStartFlowArgs(input: string, policy?: RalphPolicy): { objective: string; iterations: number } {
@@ -246,76 +243,49 @@ function parseStartFlowArgs(input: string, policy?: RalphPolicy): { objective: s
   return { objective, iterations };
 }
 
-function isMainWorktree(cwd: string): boolean {
-  try {
-    let dir = path.resolve(cwd);
-
-    while (true) {
-      const dotGit = path.join(dir, ".git");
-      if (fs.existsSync(dotGit)) {
-        return fs.statSync(dotGit).isDirectory();
-      }
-
-      const parent = path.dirname(dir);
-      if (parent === dir) return false;
-      dir = parent;
-    }
-  } catch {
-    return false;
-  }
-}
-
-function assertSafeWorktreeOrNotify(ctx: ExtensionCommandContext, allowMain: boolean): boolean {
-  if (allowMain) return true;
-  if (!isMainWorktree(ctx.cwd)) return true;
-
-  ctx.ui.notify(
-    "Ralph guard: this appears to be the primary worktree. Use a feature worktree or pass --allow-main.",
-    "warning"
-  );
-  return false;
-}
-
 function getLock(cwd: string): RalphLock | null {
   return readJsonFile(ralphPaths(cwd).lock, null as RalphLock | null);
 }
 
-function saveLock(cwd: string, lock: RalphLock) {
-  writeJsonFile(ralphPaths(cwd).lock, lock);
-}
-
 function clearLock(cwd: string) {
-  const { lock } = ralphPaths(cwd);
-  fs.rmSync(lock, { force: true });
-}
-
-function upsertLock(cwd: string, command: RalphLock["command"], runId: string | null) {
-  const existing = getLock(cwd);
-  const lock: RalphLock = {
-    runId,
-    command,
-    createdAt: existing?.createdAt ?? nowIso(),
-    updatedAt: nowIso(),
-  };
-  saveLock(cwd, lock);
+  fs.rmSync(ralphPaths(cwd).lock, { force: true });
 }
 
 function isActivePhase(phase: RalphPhase): boolean {
-  return phase === "running" || phase === "paused";
+  return phase === "planning" || phase === "running" || phase === "paused";
 }
 
-function lockConflicts(cwd: string, state: RalphState): boolean {
+function canClearStaleLock(state: RalphState): boolean {
+  return !isActivePhase(state.phase) && !state.currentRunId;
+}
+
+function clearStaleLockIfSafe(cwd: string, state: RalphState): RalphLock | null {
   const lock = getLock(cwd);
-  if (!lock) return false;
+  if (!lock || !canClearStaleLock(state)) return null;
 
-  if (!isActivePhase(state.phase)) {
-    clearLock(cwd);
-    return false;
-  }
-
-  const sameRun = lock.runId && state.currentRunId && lock.runId === state.currentRunId;
-  return !sameRun;
+  clearLock(cwd);
+  appendHistory(cwd, {
+    ts: nowIso(),
+    runId: lock.runId,
+    action: "clear-stale-lock",
+    phase: state.phase,
+    detail: { lockRunId: lock.runId, stateRunId: state.currentRunId },
+  });
+  return lock;
 }
+
+function formatRalphStatus(state: RalphState, lock: RalphLock | null, staleLockCleared?: RalphLock | null): string {
+  return [
+    "Ralph status",
+    `Phase: ${state.phase}`,
+    `Run: ${state.currentRunId ?? "none"}`,
+    `Paused: ${state.paused ? "yes" : "no"}`,
+    `Lock: ${lock ? lock.runId ?? "unknown" : "none"}`,
+    staleLockCleared ? `Recovered: cleared stale lock ${staleLockCleared.runId ?? "unknown"}` : null,
+    `Objective: ${state.objective || "(unset)"}`,
+  ].filter(Boolean).join("\n");
+}
+
 
 function acquireStartLock(cwd: string, runId: string): boolean {
   const { lock } = ralphPaths(cwd);
@@ -336,18 +306,6 @@ function acquireStartLock(cwd: string, runId: string): boolean {
   }
 }
 
-function dispatchCommand(pi: ExtensionAPI, ctx: ExtensionCommandContext, command: string) {
-  if (ctx.isIdle()) {
-    pi.sendUserMessage(command);
-    return;
-  }
-
-  pi.sendUserMessage(command, { deliverAs: "followUp" });
-}
-
-function quote(input: string): string {
-  return input.replace(/"/g, '\\"');
-}
 
 function registerRalphCommand(
   pi: ExtensionAPI,
@@ -355,9 +313,7 @@ function registerRalphCommand(
   description: string,
   handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>
 ) {
-  for (const name of [baseName, baseName.replace(":", "-")]) {
-    pi.registerCommand(name, { description, handler });
-  }
+  pi.registerCommand(baseName, { description, handler });
 }
 
 type RalphSignal = "RALPH_GROOMED" | "RALPH_WORKER_DONE" | "RALPH_COMPLETE" | "RALPH_BLOCKED" | "RALPH_SUMMARY_READY";
@@ -589,34 +545,13 @@ function createRalphWorkflow(opts: { cwd: string; runId: string; objective: stri
 
 function registerRalphLoop(pi: ExtensionAPI) {
   let startEngine: WorkflowEngine | null = null;
-  registerRalphCommand(pi, "ralph:init", "Initialize Ralph loop policy and state files", async (args, ctx) => {
-    const parsed = stripAllowMainFlag(args);
-    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
-
-    ensureArtifacts(ctx.cwd, parsed.text);
-    const state = loadState(ctx.cwd);
-    const goal = parsed.text || state.objective || "Deliver scoped features with strict validation gates.";
-
-    const nextState: RalphState = {
-      ...state,
-      phase: "idle",
-      currentRunId: null,
-      objective: goal,
-      paused: false,
-    };
-
-    saveState(ctx.cwd, nextState);
-    clearLock(ctx.cwd);
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "init", phase: nextState.phase, detail: { goal } });
-    ctx.ui.notify(`Ralph initialized: ${summarizeState(nextState)}`, "success");
-  });
 
   registerRalphCommand(pi, "ralph:start", "Start Ralph v2 workflow (groom → worker loop → summarize)", async (args, ctx) => {
-    const parsed = stripAllowMainFlag(args);
-    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+    const parsed = parseRalphArgs(args);
 
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
+    clearStaleLockIfSafe(ctx.cwd, state);
 
     if (startEngine?.isActive()) {
       ctx.ui.notify("A Ralph workflow is already running. Wait for it to complete or stop it first.", "warning");
@@ -646,7 +581,7 @@ function registerRalphLoop(pi: ExtensionAPI) {
     }
 
     if (effectiveState.phase === "paused" && effectiveState.currentRunId) {
-      ctx.ui.notify("Ralph has a paused run. Resume or stop it before starting a new run.", "warning");
+      ctx.ui.notify("Ralph has a paused run from an earlier command. Stop it before starting a new run.", "warning");
       return;
     }
 
@@ -686,162 +621,8 @@ function registerRalphLoop(pi: ExtensionAPI) {
     ctx.ui.notify(`Ralph workflow started (${runId}, ${iterations} worker${iterations === 1 ? "" : "s"} max)`, "info");
   });
 
-  registerRalphCommand(pi, "ralph:plan", "Refresh Ralph plan using planner subagent", async (args, ctx) => {
-    const parsed = stripAllowMainFlag(args);
-    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
 
-    ensureArtifacts(ctx.cwd);
-    const state = loadState(ctx.cwd);
-
-    if (state.phase === "running" || state.phase === "paused") {
-      ctx.ui.notify("Cannot re-plan while a run is active. Pause/stop first.", "warning");
-      return;
-    }
-
-    const objective = parsed.text || state.objective || "Refresh prioritized implementation plan";
-
-    const nextState: RalphState = {
-      ...state,
-      phase: "planning",
-      objective,
-      paused: false,
-    };
-
-    saveState(ctx.cwd, nextState);
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "plan", phase: nextState.phase, detail: { objective } });
-
-    const task = [
-      `Objective: ${objective}`,
-      `Use @${path.join(RALPH_DIR, PLAN_FILE)} as source-of-truth backlog.`,
-      `Use @${path.join(RALPH_DIR, RUNBOOK_FILE)} for learned commands.`,
-      "Re-prioritize top items, deduplicate, and keep entries concise and testable.",
-    ].join("\n");
-
-    dispatchCommand(pi, ctx, `/run ${nextState.agentMap.planner} "${quote(task)}"`);
-    ctx.ui.notify("Ralph planning dispatched", "info");
-  });
-
-  registerRalphCommand(pi, "ralph:retry", "Retry current item with implementer -> validator chain", async (args, ctx) => {
-    const parsed = stripAllowMainFlag(args);
-    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
-
-    ensureArtifacts(ctx.cwd);
-    const state = loadState(ctx.cwd);
-
-    if (state.phase !== "running") {
-      ctx.ui.notify("Retry is only available while a run is in progress.", "warning");
-      return;
-    }
-
-    if (!state.currentRunId) {
-      ctx.ui.notify("No active run to retry.", "warning");
-      return;
-    }
-    const retryRunId = state.currentRunId;
-
-    const nextState: RalphState = {
-      ...state,
-      phase: "running",
-      paused: false,
-    };
-
-    if (lockConflicts(ctx.cwd, state)) {
-      ctx.ui.notify("Ralph lock is owned by another run in this worktree.", "warning");
-      return;
-    }
-
-    saveState(ctx.cwd, nextState);
-    upsertLock(ctx.cwd, "retry", retryRunId);
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: retryRunId, action: "retry", phase: nextState.phase });
-
-    const implementTask = quote([
-      `Retry run ${retryRunId}`,
-      `Objective: ${nextState.objective}`,
-      `Plan source: @${path.join(RALPH_DIR, PLAN_FILE)}`,
-      "Implement only one highest-priority incomplete item.",
-    ].join("\n"));
-
-    const validateTask = quote(
-      `Validate retry run ${retryRunId} against required gates and classify failures clearly.`
-    );
-
-    dispatchCommand(
-      pi,
-      ctx,
-      `/chain ${nextState.agentMap.implement} "${implementTask}" -> ${nextState.agentMap.validate} "${validateTask}"`
-    );
-
-    ctx.ui.notify(`Retry chain dispatched for ${retryRunId}`, "info");
-  });
-
-  registerRalphCommand(pi, "ralph:pause", "Pause Ralph loop execution", async (args, ctx) => {
-    const parsed = stripAllowMainFlag(args);
-    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
-
-    ensureArtifacts(ctx.cwd);
-    const state = loadState(ctx.cwd);
-
-    if (state.phase !== "running") {
-      ctx.ui.notify("Pause is only available while Ralph is running.", "warning");
-      return;
-    }
-    const nextState: RalphState = { ...state, phase: "paused", paused: true };
-
-    saveState(ctx.cwd, nextState);
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: state.currentRunId, action: "pause", phase: nextState.phase });
-    startEngine?.abort(ctx, "paused");
-    startEngine = null;
-
-    ctx.abort();
-    ctx.ui.notify("Ralph paused", "warning");
-  });
-
-  registerRalphCommand(pi, "ralph:resume", "Resume a paused Ralph run", async (args, ctx) => {
-    const parsed = stripAllowMainFlag(args);
-    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
-
-    ensureArtifacts(ctx.cwd);
-    const state = loadState(ctx.cwd);
-
-    if (state.phase !== "paused") {
-      ctx.ui.notify("Resume is only available when Ralph is paused.", "warning");
-      return;
-    }
-
-    if (!state.currentRunId) {
-      ctx.ui.notify("No paused run to resume.", "warning");
-      return;
-    }
-    const runId = state.currentRunId;
-
-    if (lockConflicts(ctx.cwd, state)) {
-      ctx.ui.notify("Ralph lock is owned by another run in this worktree.", "warning");
-      return;
-    }
-
-    if (startEngine?.isActive()) {
-      ctx.ui.notify("A Ralph workflow is already running. Wait for it to complete or stop it first.", "warning");
-      return;
-    }
-
-    const policy = readJsonFile(ralphPaths(ctx.cwd).policy, defaultPolicy(state.objective));
-    const resumeFlow = parseStartFlowArgs(parsed.text, policy);
-    const objective = resumeFlow.objective || state.objective || "Continue top priority plan item";
-    const iterations = resumeFlow.iterations;
-    const nextState: RalphState = { ...state, phase: "running", paused: false, objective };
-    saveState(ctx.cwd, nextState);
-    upsertLock(ctx.cwd, "resume", runId);
-
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: runId, action: "resume", phase: nextState.phase, detail: { objective, iterations } });
-
-    startEngine = new WorkflowEngine(pi, createRalphWorkflow({ cwd: ctx.cwd, runId: runId, objective, iterations }));
-    startEngine.start(objective, ctx);
-    ctx.ui.notify(`Ralph resumed (${runId}, ${iterations} worker${iterations === 1 ? "" : "s"} max)`, "info");
-  });
-
-  registerRalphCommand(pi, "ralph:stop", "Stop Ralph loop execution", async (args, ctx) => {
-    const parsed = stripAllowMainFlag(args);
-    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
+  registerRalphCommand(pi, "ralph:stop", "Stop Ralph loop execution", async (_args, ctx) => {
 
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
@@ -865,20 +646,39 @@ function registerRalphLoop(pi: ExtensionAPI) {
   registerRalphCommand(pi, "ralph:status", "Show current Ralph state", async (_args, ctx) => {
     const paths = ralphPaths(ctx.cwd);
     if (!fs.existsSync(paths.state)) {
-      ctx.ui.notify("Ralph is not initialized in this worktree. Run /ralph:init first.", "warning");
+      ctx.ui.notify("Ralph has no state in this worktree. Run /ralph:start <objective> first.", "warning");
       return;
     }
 
     const state = loadState(ctx.cwd);
+    const staleLockCleared = clearStaleLockIfSafe(ctx.cwd, state);
     const lock = getLock(ctx.cwd);
-    const lockStatus = lock ? ` | lock=${lock.runId ?? "unknown"}` : " | lock=none";
-    ctx.ui.notify(`Ralph status: ${summarizeState(state)}${lockStatus}`, "info");
+    ctx.ui.notify(formatRalphStatus(state, lock, staleLockCleared), "info");
+  });
+
+  registerRalphCommand(pi, "ralph:unlock", "Clear a stale Ralph lock when no run is active", async (_args, ctx) => {
+    ensureArtifacts(ctx.cwd);
+    const state = loadState(ctx.cwd);
+    const lock = getLock(ctx.cwd);
+
+    if (!lock) {
+      ctx.ui.notify("Ralph lock is already clear.", "info");
+      return;
+    }
+
+    if (!canClearStaleLock(state)) {
+      ctx.ui.notify(formatRalphStatus(state, lock), "warning");
+      return;
+    }
+
+    const cleared = clearStaleLockIfSafe(ctx.cwd, state);
+    ctx.ui.notify(formatRalphStatus(state, null, cleared), "success");
   });
 
   registerRalphCommand(pi, "ralph:report", "Generate a concise report of Ralph loop activity", async (_args, ctx) => {
     const paths = ralphPaths(ctx.cwd);
     if (!fs.existsSync(paths.state)) {
-      ctx.ui.notify("Ralph is not initialized in this worktree. Run /ralph:init first.", "warning");
+      ctx.ui.notify("Ralph has no state in this worktree. Run /ralph:start <objective> first.", "warning");
       return;
     }
 
