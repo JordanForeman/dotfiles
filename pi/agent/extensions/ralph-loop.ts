@@ -15,13 +15,10 @@ type RalphPolicy = {
     validate: number;
     plan: number;
   };
-  gates: {
-    requireSearchBeforeWrite: boolean;
-    requireUnitOrScopedTests: boolean;
-    requireTypecheck: boolean;
-    requireLint: boolean;
-    requireSecurityScan: boolean;
-  };
+  // NOTE: Engineering discipline (search-before-write, typecheck, tests, lint,
+  // security) is NOT configured here. It is ambient — delivered via the
+  // convention skills in pi/agent/skills/conventions/ and discovered per-project
+  // by the validation-discovery skill. This policy only shapes the loop itself.
   stopConditions: {
     maxConsecutiveFailures: number;
     maxMinutes: number;
@@ -114,7 +111,9 @@ function ensureTextFile(filePath: string, content: string) {
   if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, content, "utf8");
 }
 
-function defaultPolicy(goal = "Deliver scoped features with strict validation gates."): RalphPolicy {
+const DEFAULT_GOAL = "Deliver scoped increments one at a time until the objective is complete.";
+
+function defaultPolicy(goal = DEFAULT_GOAL): RalphPolicy {
   return {
     mode: "balanced",
     goal,
@@ -124,13 +123,6 @@ function defaultPolicy(goal = "Deliver scoped features with strict validation ga
       implement: 4,
       validate: 1,
       plan: 8,
-    },
-    gates: {
-      requireSearchBeforeWrite: true,
-      requireUnitOrScopedTests: true,
-      requireTypecheck: true,
-      requireLint: false,
-      requireSecurityScan: false,
     },
     stopConditions: {
       maxConsecutiveFailures: 3,
@@ -184,7 +176,7 @@ function summarizeState(state: RalphState): string {
 
 function ensureArtifacts(cwd: string, goal?: string) {
   const paths = ensureRalphDir(cwd);
-  const effectiveGoal = goal?.trim() || "Deliver scoped features with strict validation gates.";
+  const effectiveGoal = goal?.trim() || DEFAULT_GOAL;
 
   ensureTextFile(paths.plan, "# Ralph Plan\n\n- [ ] Seed backlog item\n");
   ensureTextFile(
@@ -342,29 +334,7 @@ function registerRalphCommand(
 }
 
 function registerRalphLoop(pi: ExtensionAPI) {
-  registerRalphCommand(pi, "ralph:init", "Initialize Ralph loop policy and state files", async (args, ctx) => {
-    const parsed = stripAllowMainFlag(args);
-    if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
-
-    ensureArtifacts(ctx.cwd, parsed.text);
-    const state = loadState(ctx.cwd);
-    const goal = parsed.text || state.objective || "Deliver scoped features with strict validation gates.";
-
-    const nextState: RalphState = {
-      ...state,
-      phase: "idle",
-      currentRunId: null,
-      objective: goal,
-      paused: false,
-    };
-
-    saveState(ctx.cwd, nextState);
-    clearLock(ctx.cwd);
-    appendHistory(ctx.cwd, { ts: nowIso(), runId: nextState.currentRunId, action: "init", phase: nextState.phase, detail: { goal } });
-    ctx.ui.notify(`Ralph initialized: ${summarizeState(nextState)}`, "success");
-  });
-
-  registerRalphCommand(pi, "ralph:start", "Start integrated Ralph flow (plan + iterative execution)", async (args, ctx) => {
+  registerRalphCommand(pi, "ralph:start", "Start the Ralph loop over the existing plan (use /ralph:plan first)", async (args, ctx) => {
     const parsed = stripAllowMainFlag(args);
     if (!assertSafeWorktreeOrNotify(ctx, parsed.allowMain)) return;
 
@@ -431,14 +401,18 @@ function registerRalphLoop(pi: ExtensionAPI) {
       `You are starting Ralph run ${runId}.`,
       `High-level objective: ${objective}`,
       `Loop iterations to execute: ${iterations}`,
-      `Artifacts: @${path.join(RALPH_DIR, POLICY_FILE)}, @${path.join(RALPH_DIR, PLAN_FILE)}, @${path.join(RALPH_DIR, RUNBOOK_FILE)}`,
-      "Workflow:",
-      "1) Planning mode in this main session: break the objective into prioritized, testable increments in @.pi/ralph/plan.md.",
-      "2) If requirements are ambiguous, use ask_user to ask the user concise multiple-choice questions before finalizing the plan.",
-      "3) After planning, execute exactly one increment per iteration using sub-sessions via /chain ralph-loop.",
-      "4) Before each iteration, re-check priorities from @.pi/ralph/plan.md.",
-      "5) Keep @.pi/ralph/plan.md and @.pi/ralph/runbook.md updated after each iteration.",
-      "6) Do not execute multiple increments in a single iteration.",
+      `Artifacts: @${path.join(RALPH_DIR, PLAN_FILE)}, @${path.join(RALPH_DIR, RUNBOOK_FILE)}`,
+      "This is the LOOP. The breakdown already exists in @.pi/ralph/plan.md",
+      "(produced by /ralph:plan). Do not re-plan the objective here.",
+      "Engineering discipline (search-before-write, validation, tests) is ambient —",
+      "the subagents already carry it. Your only job is to sequence increments.",
+      "Loop:",
+      "1) Read @.pi/ralph/plan.md and select the single highest-priority incomplete increment.",
+      "2) If the plan is empty or missing, stop and tell the user to run /ralph:plan first.",
+      "3) Execute exactly that one increment via /chain ralph-loop.",
+      "4) After the increment, ensure @.pi/ralph/plan.md and @.pi/ralph/runbook.md reflect the result.",
+      "5) Repeat from step 1 until all increments are complete or the iteration budget is exhausted.",
+      "6) Never execute more than one increment per iteration.",
       "Begin now.",
     ].join("\n");
 
@@ -521,7 +495,7 @@ function registerRalphLoop(pi: ExtensionAPI) {
     ].join("\n"));
 
     const validateTask = quote(
-      `Validate retry run ${nextState.currentRunId} against required gates and classify failures clearly.`
+      `Validate retry run ${nextState.currentRunId} against the project's own discovered validation contract and classify failures clearly.`
     );
 
     dispatchCommand(
@@ -616,7 +590,7 @@ function registerRalphLoop(pi: ExtensionAPI) {
   registerRalphCommand(pi, "ralph:status", "Show current Ralph state", async (_args, ctx) => {
     const paths = ralphPaths(ctx.cwd);
     if (!fs.existsSync(paths.state)) {
-      ctx.ui.notify("Ralph is not initialized in this worktree. Run /ralph:init first.", "warning");
+      ctx.ui.notify("Ralph has no state in this worktree yet. Run /ralph:plan or /ralph:start first.", "warning");
       return;
     }
 
@@ -629,7 +603,7 @@ function registerRalphLoop(pi: ExtensionAPI) {
   registerRalphCommand(pi, "ralph:report", "Generate a concise report of Ralph loop activity", async (_args, ctx) => {
     const paths = ralphPaths(ctx.cwd);
     if (!fs.existsSync(paths.state)) {
-      ctx.ui.notify("Ralph is not initialized in this worktree. Run /ralph:init first.", "warning");
+      ctx.ui.notify("Ralph has no state in this worktree yet. Run /ralph:plan or /ralph:start first.", "warning");
       return;
     }
 

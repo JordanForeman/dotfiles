@@ -7,7 +7,7 @@ description: One Ralph loop increment using planner, recon, implementer, validat
 output: plan-step.md
 progress: true
 
-Plan one scoped increment for {task}. Use @.pi/ralph/plan.md and @.pi/ralph/policy.json when available. Output strict acceptance criteria and required validation gates.
+Plan one scoped increment for {task}. Use @.pi/ralph/plan.md when available. Output strict, testable acceptance criteria. Do not prescribe a fixed gate list — validation is discovered from the project's own contract at execution time.
 
 ## ralph-recon
 reads: plan-step.md
@@ -21,14 +21,14 @@ reads: plan-step.md, recon-step.md
 output: implement-step.md
 progress: true
 
-Implement one increment only from plan-step.md using recon-step.md evidence. Keep edits small, avoid placeholders, and run targeted checks.
+Implement one increment only from plan-step.md using recon-step.md evidence. Keep edits small, avoid placeholders, and run the project's own targeted checks.
 
 ## ralph-validator
 reads: plan-step.md, implement-step.md
 output: validate-step.md
 progress: true
 
-Apply validation gates for the increment and provide strict pass/fail evidence with remediation guidance.
+Confirm the increment satisfies the project's own discovered validation contract and provide strict pass/fail evidence with remediation guidance (or honest abstention if no contract exists).
 
 ## ralph-historian
 reads: plan-step.md, implement-step.md, validate-step.md

@@ -13,7 +13,7 @@ type DetectRules = {
   files?: string[];
   platform?: string;
   dependencies?: string[];
-  mode?: "read-only";
+  mode?: "read-only" | "write";
 };
 
 type SkillEntry = {
@@ -101,6 +101,12 @@ function detectReadOnlyMode(activeTools: string[]): boolean {
   const hasWrite = names.has("write");
   const hasGitMutator = Array.from(names).some((n) => /^(git|git[-_:].+|.*[-_:]git)$/.test(n));
   return !hasBash && !hasEdit && !hasWrite && !hasGitMutator;
+}
+
+function detectWriteMode(activeTools: string[]): boolean {
+  if (activeTools.length === 0) return false;
+  const names = new Set(activeTools.map((t) => t.trim().toLowerCase()));
+  return names.has("bash") || names.has("edit") || names.has("write");
 }
 
 // ── SKILL.md frontmatter parsing ─────────────────────────────────────────────
@@ -226,6 +232,7 @@ function evaluateDetection(entry: SkillEntry, ctx: DetectionContext): boolean {
 
   // Mode check
   if (rules.mode === "read-only" && detectReadOnlyMode(ctx.activeTools)) return true;
+  if (rules.mode === "write" && detectWriteMode(ctx.activeTools)) return true;
 
   // File existence check
   if (rules.files && rules.files.length > 0 && hasAnyFile(ctx.cwd, rules.files)) return true;
