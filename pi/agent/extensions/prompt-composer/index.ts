@@ -254,7 +254,7 @@ You will receive a list of available fragments, each with an ID and a descriptio
 
 Respond with a JSON array of fragment IDs. If no fragments are relevant, respond with [].
 
-Example response: ["conventions/careful-actions/SKILL.md", "guides/debugging/SKILL.md"]`;
+Example response: ["conventions/code-security/SKILL.md", "guides/debugging/SKILL.md"]`;
 
 async function classifyPrompt(
   prompt: string,

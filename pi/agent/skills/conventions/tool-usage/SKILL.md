@@ -9,5 +9,11 @@ injection: always
 - Sequence dependent operations explicitly; do not use placeholder arguments.
 - Communicate directly in assistant text, never via shell echo/printf.
 - For multi-agent work, prefer the `subagent` tool over manual roleplay.
-- Use chain or parallel execution (`/chain`, `/parallel`, or `subagent` `chain`/`tasks`) based on dependency structure.
-- When in doubt, pick the smallest viable delegation topology first, then expand only if needed.
+
+### Delegation topology
+
+Choose the delegation shape dynamically per task, smallest viable first, then expand only if needed:
+- single specialist (`/run`) for one focused task
+- sequential handoff (`/chain`) when each step depends on the prior
+- parallel independent tracks (`/parallel`, or `subagent` `chain`/`tasks`) when tracks don't depend on each other
+- For frontend/design objectives (explicit or implicit, e.g. marketing site requests), include a dedicated design agent when useful and propagate that output into implementation.

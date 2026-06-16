@@ -131,7 +131,7 @@ Workflows (Lifecycle)  "How it's coordinated"  extensions/workflows/tdd.ts, tria
   │
 Subagents (Execution)  "Who does it"           testing-reviewer, builder, architect
   │
-Skills (Knowledge)     "How to do it well"     safety, debugging, clean-code
+Skills (Knowledge)     "How to do it well"     safety, debugging, naming, testing
 ```
 
 - **Prompts** are user-facing workflow triggers. They declare which subagents or workflows they invoke.
@@ -266,7 +266,7 @@ Skills are the unified system for contextual knowledge. They live under `pi/agen
 | `conventions/` | Rules: specific constraints to follow | `typescript`, `safety`, `git-ops` |
 | `guides/` | Methodology: how to approach a class of problem | `debugging`, `refactoring`, `figma-design` |
 | `formats/` | Structure: templates for structured output | |
-| `standards/` | Taste: opinionated quality bars; what "good" looks like | `clean-code`, `concise-output`, `frontend-aesthetics` |
+| `standards/` | Taste: opinionated quality bars; what "good" looks like | `naming`, `code-shape`, `api-design`, `module-structure`, `testing`, `concise-output`, `frontend-aesthetics` |
 
 Each skill is a directory containing a `SKILL.md` with YAML frontmatter:
 

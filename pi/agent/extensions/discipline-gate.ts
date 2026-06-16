@@ -16,7 +16,7 @@ import { GuardianExtensionCore } from "../extension-core/guardian-extension-core
  *
  * Enforcement levels (Jordan, 2026-06-16):
  *   - search-before-write  → CONFIRM  (block edit/write w/o prior read/search)
- *   - careful-actions      → CONFIRM  (block destructive bash)
+ *   - safety               → CONFIRM  (block destructive bash)
  *   - validation-discovery → WARN     (non-blocking nudge after writes)
  *   - worktree             → omitted  (deliberately not enforced for now)
  *
@@ -28,7 +28,7 @@ import { GuardianExtensionCore } from "../extension-core/guardian-extension-core
 
 const WRITE_TOOLS = new Set(["edit", "write"]);
 
-// Destructive bash patterns → CONFIRM (careful-actions).
+// Destructive bash patterns → CONFIRM (safety).
 const DESTRUCTIVE_BASH: { re: RegExp; reason: string }[] = [
   { re: /\brm\s+-[a-z]*r[a-z]*f|\brm\s+-[a-z]*f[a-z]*r/i, reason: "recursive force delete (rm -rf)" },
   { re: /\bgit\s+push\b[^\n]*\s(--force\b|-f\b)/i, reason: "git force-push" },
@@ -169,15 +169,15 @@ export class DisciplineGateExtension extends GuardianExtensionCore {
       if (isToolCallEventType("bash", event)) {
         const command = event.input.command ?? "";
 
-        // CONFIRM: careful-actions (destructive bash)
+        // CONFIRM: safety (destructive bash)
         for (const { re, reason } of DESTRUCTIVE_BASH) {
           if (re.test(command)) {
             const proceed = await ctx.ui.confirm(
-              "⚖️  careful-actions",
+              "⚖️  safety",
               `Destructive/irreversible action detected: ${reason}.\n\n${command.slice(0, 200)}\n\nProceed?`
             );
             if (!proceed) {
-              return { block: true, reason: `Blocked: ${reason} (careful-actions). Investigate root cause instead of bypassing.` };
+              return { block: true, reason: `Blocked: ${reason} (safety). Investigate root cause instead of bypassing.` };
             }
             break;
           }
