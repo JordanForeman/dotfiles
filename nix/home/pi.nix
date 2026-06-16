@@ -89,6 +89,7 @@ in
         "../agent/extensions/theme-switcher.ts"
         "../agent/extensions/pi-ask.ts"
         "../agent/extensions/ralph-loop.ts"
+        "../agent/extensions/discipline-gate.ts"
         "../agent/extensions/context-threshold/index.ts"
       ]
       ++ config.pi.extensions
@@ -141,6 +142,7 @@ in
     home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
     home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
     home.file.".pi/agent/extensions/ralph-loop.ts".source = ../../pi/agent/extensions/ralph-loop.ts;
+    home.file.".pi/agent/extensions/discipline-gate.ts".source = ../../pi/agent/extensions/discipline-gate.ts;
     home.file.".pi/agent/extensions/linear.ts".source = ../../pi/agent/extensions/linear.ts;
     home.file.".pi/agent/extension-core" = {
       source = ../../pi/agent/extension-core;
