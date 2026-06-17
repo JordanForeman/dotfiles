@@ -10,29 +10,14 @@ import {
   type WorkflowDefinition,
 } from "../extension-core/workflow-engine";
 
-type RalphPhase = "uninitialized" | "idle" | "planning" | "running" | "paused" | "stopped";
+type RalphPhase = "uninitialized" | "idle" | "running" | "stopped";
 
-type RalphPolicy = {
-  mode: "conservative" | "balanced" | "aggressive";
-  goal: string;
-  maxLoopsPerRun: number;
-  maxParallel: {
-    recon: number;
-    implement: number;
-    validate: number;
-    plan: number;
-  };
-  // NOTE: Engineering discipline (search-before-write, typecheck, tests, lint,
-  // security) is NOT configured here. It is ambient — delivered via the
-  // convention skills in pi/agent/skills/conventions/ and discovered per-project
-  // by agents from the repository's own validation contract. This policy only
-  // shapes the loop itself.
-  stopConditions: {
-    maxConsecutiveFailures: number;
-    maxMinutes: number;
-    budgetUsd: number;
-  };
-};
+// The maximum number of worker increments a single `ralph:start` run may
+// request. The loop is a sequencer, not a policy engine — this is the one
+// loop-shaping knob worth keeping, and it lives as a constant rather than a
+// per-worktree config file. Engineering discipline is ambient (delivered via
+// the convention skills in pi/agent/skills/conventions/), never configured here.
+const MAX_LOOPS_PER_RUN = 20;
 
 type RalphState = {
   version: 1;
@@ -40,16 +25,7 @@ type RalphState = {
   runCount: number;
   currentRunId: string | null;
   objective: string;
-  paused: boolean;
   lastUpdatedAt: string;
-  agentMap: {
-    planner: string;
-    recon: string;
-    implement: string;
-    validate: string;
-    historian: string;
-    chain: string;
-  };
 };
 
 type RalphHistoryEvent = {
@@ -68,7 +44,6 @@ type RalphLock = {
 };
 
 const RALPH_DIR = path.join(".pi", "ralph");
-const POLICY_FILE = "policy.json";
 const STATE_FILE = "state.json";
 const PLAN_FILE = "plan.md";
 const RUNBOOK_FILE = "runbook.md";
@@ -87,7 +62,6 @@ function ralphPaths(cwd: string) {
   const root = path.join(cwd, RALPH_DIR);
   return {
     root,
-    policy: path.join(root, POLICY_FILE),
     state: path.join(root, STATE_FILE),
     plan: path.join(root, PLAN_FILE),
     runbook: path.join(root, RUNBOOK_FILE),
@@ -130,25 +104,6 @@ function ensureTextFile(filePath: string, content: string) {
 
 const DEFAULT_GOAL = "Deliver scoped increments one at a time until the objective is complete.";
 
-function defaultPolicy(goal = DEFAULT_GOAL): RalphPolicy {
-  return {
-    mode: "balanced",
-    goal,
-    maxLoopsPerRun: 20,
-    maxParallel: {
-      recon: 12,
-      implement: 4,
-      validate: 1,
-      plan: 8,
-    },
-    stopConditions: {
-      maxConsecutiveFailures: 3,
-      maxMinutes: 120,
-      budgetUsd: 20,
-    },
-  };
-}
-
 function defaultState(): RalphState {
   return {
     version: 1,
@@ -156,16 +111,7 @@ function defaultState(): RalphState {
     runCount: 0,
     currentRunId: null,
     objective: "",
-    paused: false,
     lastUpdatedAt: nowIso(),
-    agentMap: {
-      planner: "ralph-planner",
-      recon: "ralph-recon",
-      implement: "ralph-implementer",
-      validate: "ralph-validator",
-      historian: "ralph-historian",
-      chain: "ralph-loop",
-    },
   };
 }
 
@@ -186,7 +132,6 @@ function summarizeState(state: RalphState): string {
   return [
     `phase=${state.phase}`,
     `run=${state.currentRunId ?? "none"}`,
-    `paused=${state.paused ? "yes" : "no"}`,
     `objective=${state.objective || "(unset)"}`,
   ].join(" | ");
 }
@@ -202,17 +147,12 @@ function ensureArtifacts(cwd: string, goal?: string) {
   );
   ensureTextFile(paths.progress, "# Ralph Progress\n\n- No worker increments recorded yet.\n");
 
-  if (!fs.existsSync(paths.policy)) {
-    writeJsonFile(paths.policy, defaultPolicy(effectiveGoal));
-  }
-
   const state = loadState(cwd);
   if (!fs.existsSync(paths.state)) {
     saveState(cwd, {
       ...state,
       phase: "idle",
       objective: effectiveGoal,
-      paused: false,
     });
   }
 
@@ -227,11 +167,10 @@ function parseRalphArgs(args: string): { text: string } {
   return { text: args.trim() };
 }
 
-function parseStartFlowArgs(input: string, policy?: RalphPolicy): { objective: string; iterations: number } {
+function parseStartFlowArgs(input: string): { objective: string; iterations: number } {
   const match = input.match(/(?:--iterations|-n)\s+(\d+)/);
   const requested = match ? Math.max(1, Number(match[1])) : 1;
-  const cap = Math.max(1, policy?.maxLoopsPerRun ?? requested);
-  const iterations = Math.min(requested, cap);
+  const iterations = Math.min(requested, MAX_LOOPS_PER_RUN);
   const objective = input.replace(/(?:--iterations|-n)\s+\d+/, "").trim();
   return { objective, iterations };
 }
@@ -245,7 +184,7 @@ function clearLock(cwd: string) {
 }
 
 function isActivePhase(phase: RalphPhase): boolean {
-  return phase === "planning" || phase === "running" || phase === "paused";
+  return phase === "running";
 }
 
 function canClearStaleLock(state: RalphState): boolean {
@@ -272,7 +211,6 @@ function formatRalphStatus(state: RalphState, lock: RalphLock | null, staleLockC
     "Ralph status",
     `Phase: ${state.phase}`,
     `Run: ${state.currentRunId ?? "none"}`,
-    `Paused: ${state.paused ? "yes" : "no"}`,
     `Lock: ${lock ? lock.runId ?? "unknown" : "none"}`,
     staleLockCleared ? `Recovered: cleared stale lock ${staleLockCleared.runId ?? "unknown"}` : null,
     `Objective: ${state.objective || "(unset)"}`,
@@ -436,7 +374,7 @@ function createRalphWorkflow(opts: { cwd: string; runId: string; objective: stri
           task: [
             `Ralph run: ${opts.runId}`,
             "Objective: {input}",
-            `Durable artifacts: @${path.join(RALPH_DIR, POLICY_FILE)}, @${path.join(RALPH_DIR, PLAN_FILE)}, @${path.join(RALPH_DIR, RUNBOOK_FILE)}, @${path.join(RALPH_DIR, BRIEF_FILE)}`,
+            `Durable artifacts: @${path.join(RALPH_DIR, PLAN_FILE)}, @${path.join(RALPH_DIR, RUNBOOK_FILE)}, @${path.join(RALPH_DIR, BRIEF_FILE)}`,
             "",
             "Groom the objective and repository/project artifacts into @.pi/ralph/brief.md.",
             "Ask broad product/scope/safety questions only via contact_supervisor when available; otherwise emit RALPH_BLOCKED with the needed decision.",
@@ -518,7 +456,6 @@ function createRalphWorkflow(opts: { cwd: string; runId: string; objective: stri
             ...state,
             phase: nextPhase,
             currentRunId: null,
-            paused: false,
           });
           clearLock(opts.cwd);
           appendHistory(opts.cwd, {
@@ -573,14 +510,13 @@ function registerRalphLoop(pi: ExtensionAPI) {
       });
     }
 
-    if (effectiveState.phase === "paused" && effectiveState.currentRunId) {
-      ctx.ui.notify("Ralph has a paused run from an earlier command. Stop it before starting a new run.", "warning");
+    if (effectiveState.phase === "running" && effectiveState.currentRunId) {
+      ctx.ui.notify("Ralph has an active run from an earlier command. Stop it before starting a new run.", "warning");
       return;
     }
 
 
-    const policy = readJsonFile(ralphPaths(ctx.cwd).policy, defaultPolicy(effectiveState.objective));
-    const startFlow = parseStartFlowArgs(parsed.text, policy);
+    const startFlow = parseStartFlowArgs(parsed.text);
     const runId = `R-${String(effectiveState.runCount + 1).padStart(4, "0")}`;
     const objective = startFlow.objective || effectiveState.objective || "Execute top priority plan item";
     const iterations = startFlow.iterations;
@@ -595,7 +531,6 @@ function registerRalphLoop(pi: ExtensionAPI) {
       phase: "running",
       runCount: effectiveState.runCount + 1,
       currentRunId: runId,
-      paused: false,
       objective,
     };
 
@@ -620,11 +555,11 @@ function registerRalphLoop(pi: ExtensionAPI) {
     ensureArtifacts(ctx.cwd);
     const state = loadState(ctx.cwd);
 
-    if (state.phase !== "running" && state.phase !== "paused") {
-      ctx.ui.notify("Stop is only available for active or paused runs.", "warning");
+    if (state.phase !== "running") {
+      ctx.ui.notify("Stop is only available for active runs.", "warning");
       return;
     }
-    const nextState: RalphState = { ...state, phase: "stopped", paused: false, currentRunId: null };
+    const nextState: RalphState = { ...state, phase: "stopped", currentRunId: null };
 
     saveState(ctx.cwd, nextState);
     clearLock(ctx.cwd);
