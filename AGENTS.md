@@ -76,7 +76,7 @@ When changing packages, modules, or activation behavior:
 - Keep changes scoped to the target platform/machine
 - Validate with a build before switch when possible
 
-Useful validation commands:
+**Validation (build only — safe, no activation):**
 
 ```bash
 # Personal macOS
@@ -88,6 +88,30 @@ nix run home-manager/master -- build --flake .#jordan@shopify-macbook
 # Linux (example host)
 home-manager build --flake .#jordan@omarchy
 ```
+
+**Applying changes (the switch): ALWAYS use `./install.sh`.**
+
+Never recommend or run a manual `darwin-rebuild switch` / `home-manager switch`.
+`install.sh` is the single entrypoint: it detects the platform, ensures
+`~/.dotfiles` symlinks to the checkout (required for `mkOutOfStoreSymlink`
+wiring), builds, then switches with the correct flags for the target machine.
+
+```bash
+./install.sh
+```
+
+**Can an agent run it unattended? Depends on the machine:**
+
+| Machine | Switch command | sudo? | Agent-runnable |
+|---|---|---|---|
+| Personal macOS (nix-darwin) | `sudo -E darwin-rebuild switch` | **yes** — prompts for password | No (interactive sudo) |
+| Work macOS (Home Manager) | `nix run home-manager/master -- switch` | no | Yes |
+| Linux (Home Manager) | `home-manager switch` | no (switch itself) | Yes |
+
+On a personal Mac the `darwin-rebuild switch` step needs a password, so the
+agent should stop after the build and hand `./install.sh` to Jordan to run.
+On the work macOS and Linux the switch needs no sudo and the agent may run
+`./install.sh` directly.
 
 ### 2) Dotfile/app config changes
 
