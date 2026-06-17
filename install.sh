@@ -127,10 +127,28 @@ EOF
   # Needed to install "unfree" packages (whatever the heck that means)
   export NIXPKGS_ALLOW_UNFREE=1
 
-  # nix-darwin invokes `brew bundle` during activation. Homebrew's cask API
-  # can fail with stale metadata when automatic updates are disabled, so refresh
-  # it before switching.
+  # nix-darwin invokes `brew bundle` during activation. When Homebrew's
+  # tap trust enforcement is enabled, third-party taps must be trusted before
+  # their formulae/casks can be loaded.
   if [[ "$INSTALL_MODE" == "nix-darwin" ]] && command -v brew &>/dev/null; then
+    if brew help trust &>/dev/null; then
+      echo "🍺 Trusting managed Homebrew taps..."
+      managed_brew_taps=(
+        "FelixKratz/formulae"
+        "nikitabobko/tap"
+      )
+      for tap in "${managed_brew_taps[@]}"; do
+        if ! brew trust --tap "$tap"; then
+          echo "❌ Failed to trust Homebrew tap: $tap"
+          exit 1
+        fi
+      done
+      echo "✅ Managed Homebrew taps trusted"
+      echo ""
+    fi
+
+    # Homebrew's cask API can fail with stale metadata when automatic updates
+    # are disabled, so refresh it before switching.
     echo "🍺 Updating Homebrew metadata..."
     if brew update; then
       echo "✅ Homebrew metadata updated"
@@ -139,6 +157,22 @@ EOF
       exit 1
     fi
     echo ""
+  fi
+
+  # Older Home Manager generations managed the whole Zellij config directory as
+  # a store symlink. The current config manages individual children, so remove
+  # only that generated parent symlink before activation creates the real dir.
+  zellij_config="$HOME/.config/zellij"
+  if [[ -L "$zellij_config" ]]; then
+    zellij_target=$(readlink "$zellij_config")
+    case "$zellij_target" in
+    /nix/store/*-home-manager-files/.config/zellij)
+      echo "🧹 Removing stale Home Manager Zellij parent symlink..."
+      unlink "$zellij_config"
+      echo "✅ Stale Zellij parent symlink removed"
+      echo ""
+      ;;
+    esac
   fi
 
   echo "🔧 Building configuration..."
