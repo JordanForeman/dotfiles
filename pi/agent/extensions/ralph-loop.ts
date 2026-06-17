@@ -22,13 +22,11 @@ type RalphPolicy = {
     validate: number;
     plan: number;
   };
-  gates: {
-    requireSearchBeforeWrite: boolean;
-    requireUnitOrScopedTests: boolean;
-    requireTypecheck: boolean;
-    requireLint: boolean;
-    requireSecurityScan: boolean;
-  };
+  // NOTE: Engineering discipline (search-before-write, typecheck, tests, lint,
+  // security) is NOT configured here. It is ambient — delivered via the
+  // convention skills in pi/agent/skills/conventions/ and discovered per-project
+  // by agents from the repository's own validation contract. This policy only
+  // shapes the loop itself.
   stopConditions: {
     maxConsecutiveFailures: number;
     maxMinutes: number;
@@ -130,7 +128,9 @@ function ensureTextFile(filePath: string, content: string) {
   if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, content, "utf8");
 }
 
-function defaultPolicy(goal = "Deliver scoped features with strict validation gates."): RalphPolicy {
+const DEFAULT_GOAL = "Deliver scoped increments one at a time until the objective is complete.";
+
+function defaultPolicy(goal = DEFAULT_GOAL): RalphPolicy {
   return {
     mode: "balanced",
     goal,
@@ -140,13 +140,6 @@ function defaultPolicy(goal = "Deliver scoped features with strict validation ga
       implement: 4,
       validate: 1,
       plan: 8,
-    },
-    gates: {
-      requireSearchBeforeWrite: true,
-      requireUnitOrScopedTests: true,
-      requireTypecheck: true,
-      requireLint: false,
-      requireSecurityScan: false,
     },
     stopConditions: {
       maxConsecutiveFailures: 3,
@@ -200,7 +193,7 @@ function summarizeState(state: RalphState): string {
 
 function ensureArtifacts(cwd: string, goal?: string) {
   const paths = ensureRalphDir(cwd);
-  const effectiveGoal = goal?.trim() || "Deliver scoped features with strict validation gates.";
+  const effectiveGoal = goal?.trim() || DEFAULT_GOAL;
 
   ensureTextFile(paths.plan, "# Ralph Plan\n\n- [ ] Seed backlog item\n");
   ensureTextFile(

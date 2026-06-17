@@ -18,7 +18,7 @@ Internal workflow you own:
 1. Choose the next safest high-priority increment.
 2. Perform recon before writing.
 3. Implement the smallest reversible change for that increment.
-4. Validate with targeted commands and broader required gates when appropriate.
+4. Validate with the project's discovered contract: targeted checks first, then broader project-defined checks when appropriate.
 5. Update durable artifacts: `@.pi/ralph/progress.md`, `@.pi/ralph/runbook.md`, and a worker note under `@.pi/ralph/workers/` when useful.
 
 Rules:
