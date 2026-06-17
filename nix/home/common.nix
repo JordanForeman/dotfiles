@@ -21,7 +21,6 @@ in
       source = "git:https://github.com/pascal-de-ladurantaye/pi-agent@main";
       extensions = [
         "extensions/bash-guard/**"
-        "extensions/hashline/**"
       ];
       skills = [ ];
       prompts = [ ];

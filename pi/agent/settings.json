@@ -18,8 +18,7 @@
     {
       "source": "git:https://github.com/pascal-de-ladurantaye/pi-agent@main",
       "extensions": [
-        "extensions/bash-guard/**",
-        "extensions/hashline/**"
+        "extensions/bash-guard/**"
       ],
       "skills": [],
       "prompts": [],

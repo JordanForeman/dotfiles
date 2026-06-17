@@ -121,14 +121,6 @@ in
         ${../scripts/reconcile-pi-profile-settings.py}
     '';
 
-    # Ensure Pascal hashline's transitive dependency is present when loading just
-    # selected extensions from his git package.
-    home.activation.piHashlineDependency = lib.hm.dag.entryAfter [ "piProfileSettingsMerge" ] ''
-      ${pkgs.bash}/bin/bash ${../scripts/ensure-pi-hashline-deps.sh} \
-        "${config.home.homeDirectory}/.pi" \
-        ${pkgs.nodejs}/bin/npm
-    '';
-
     # Remove replaced extension paths that should no longer be loaded.
     home.activation.piObsoleteExtensionCleanup = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       ${pkgs.bash}/bin/bash ${../scripts/cleanup-pi-obsolete-extensions.sh} \
