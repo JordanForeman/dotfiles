@@ -60,6 +60,16 @@ in
     recursive = true;
   };
 
+  # The work Mac runs the `agent-shopify` profile (PI_CODING_AGENT_DIR points at
+  # ~/.pi/agent-shopify). pi-subagents discovers custom agents from
+  # <PI_CODING_AGENT_DIR>/agents, so the base ~/.pi/agent/agents sync above is
+  # invisible to that profile. Sync the same definitions into the shopify profile
+  # so custom subagents (ralph-*, git-ops, etc.) are registered there too.
+  home.file.".pi/agent-shopify/agents" = {
+    source = ../../pi/agent/subagents;
+    recursive = true;
+  };
+
   home.file.".pi/agent/prompts" = {
     source = ../../pi/agent/prompts;
     recursive = true;
