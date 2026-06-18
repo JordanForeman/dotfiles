@@ -24,6 +24,7 @@ Methods are sentences. Each method should operate at one consistent level of abs
 ### Prefer simple, low-coupling flow
 
 - Favor straightforward inputs and outputs over implicit state and side effects.
+- Avoid one-use derived locals that only feed the next conditional or assignment. Put the transformation in the closest block instead, unless the local names a domain concept, avoids expensive duplication, or preserves a meaningful semantic distinction.
 - Use language/framework idioms instead of custom reinventions when an equivalent exists.
 
 ### Shape is taste; idiom is the language's call
