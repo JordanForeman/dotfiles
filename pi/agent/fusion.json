@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "presets": {
+    "groom": {
+      "description": "Cheap parallel planners feed your current actor model. Tuned for /fusion-armed groom/planning turns: discovery + 3 read-only workers on fast models, synthesis stays on the active session model.",
+      "settings": {
+        "enabled": false,
+        "discoveryEnabled": true,
+        "rewriteEnabled": true,
+        "workerCount": 3,
+        "discoveryModel": "gemini-3.5-flash",
+        "discoveryThinking": "off",
+        "workerModel": "gemini-3.5-flash",
+        "workerThinking": "off",
+        "synthesizerModel": null,
+        "synthesizerThinking": "current",
+        "workerOutputBytes": 12000,
+        "contextBytes": 16000,
+        "timeoutMs": 600000
+      }
+    }
+  }
+}

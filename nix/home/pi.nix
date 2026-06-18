@@ -18,6 +18,8 @@ let
     }
   );
 
+  fusionPresets = ../../pi/agent/fusion.json;
+
   optionalExtensionsRoot = ../../pi/agent/optional-extensions;
 
   optionalExtensionFiles = builtins.listToAttrs (
@@ -109,6 +111,18 @@ in
         "${config.home.homeDirectory}" \
         ${renderedBaseSettings} \
         ${renderedProfileMergeDefaults}
+    '';
+
+    # pi-fusion presets live in ~/.pi/agent/fusion.json, which the extension writes
+    # back to at runtime (arming toggle + first-run default prompts). A read-only
+    # home.file symlink would break that, so we merge-seed it instead: missing keys
+    # from the committed presets are added, while pi-fusion's runtime prompts and
+    # any local edits are preserved. Changing an existing preset in-repo requires
+    # editing ~/.pi/agent/fusion.json (merge-missing won't overwrite existing keys).
+    home.activation.piFusionPresets = lib.hm.dag.entryAfter [ "piSettings" ] ''
+      ${pkgs.python3}/bin/python ${../scripts/reconcile-json-defaults.py} \
+        ${fusionPresets} \
+        "${config.home.homeDirectory}/.pi/agent/fusion.json"
     '';
 
     # Reconcile alternate Pi profiles (e.g. ~/.pi/agent-*) with shared dotfiles UI/tooling.

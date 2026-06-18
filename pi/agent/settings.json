@@ -27,6 +27,7 @@
     "npm:pi-subagents",
     "npm:pi-powerline-footer",
     "npm:pi-autoresearch",
+    "npm:@leblancfg/pi-fusion",
     "git:https://github.com/mattleong/pi-code-previews@e8499c0c60648e9a4544a8cb2fc117cd2dd18af7"
   ],
   "enabledModels": [
