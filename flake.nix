@@ -141,7 +141,7 @@
           "visual-studio-code" "ghostty" "dbeaver-community"
           "obsidian" "1password" "discord" "brave-browser"
           "protonvpn" "vlc" "zoom" "nikitabobko/tap/aerospace"
-          "macwhisper"
+          "macwhisper" "swiftbar"
         ];
         onActivation.cleanup = "zap";
         # Homebrew requires explicit confirmation for cleanup as of newer versions.
