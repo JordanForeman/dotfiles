@@ -21,6 +21,8 @@ When validating a change, **discover the project's own validation contract — d
 - New behavior has a test (per `test-first`). This is discipline, not project policy.
 - No left-behind debug artifacts; no public API broadened solely to enable testing.
 
+When validation exposes unrelated environment drift or pre-existing failures, separate that from the targeted result for the touched code. Report both; do not let ambient drift erase a meaningful targeted pass, and do not call the whole project green.
+
 ### Honest abstention
 
 If no validation contract is discoverable, **say so explicitly.** Downgrade from a pass/fail verdict to "here is what I ran and what I could not verify." Never fabricate a green result or silently skip validation. Surface the gap and let the user decide.
