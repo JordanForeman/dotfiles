@@ -27,6 +27,12 @@ type SkillEntry = {
   injection: InjectionType;
   /** Detection rules (only for injection: detect) */
   detect?: DetectRules;
+  /**
+   * Relevance in [0,1]. Drives ordering when the injection budget is tight and
+   * gates inclusion against a runtime relevanceFloor. Defaults are applied by
+   * injection type when frontmatter omits it (see DEFAULT_PRIORITY).
+   */
+  priority: number;
   /** Relative path from skills root to the SKILL.md */
   relativePath: string;
 };
@@ -34,6 +40,7 @@ type SkillEntry = {
 type FragmentSelection = {
   relativePath: string;
   reason: string;
+  priority: number;
 };
 
 type DetectionContext = {
@@ -50,6 +57,10 @@ type Composition = {
   selected: FragmentSelection[];
   consideredCount: number;
   truncated: boolean;
+  /** Fragments dropped because their priority fell below the runtime relevanceFloor. */
+  gatedByFloor: number;
+  /** The relevanceFloor in effect for this composition (0 = no gating). */
+  relevanceFloor: number;
   injectedChars: number;
   classifierUsed: boolean;
   classifierMs: number;
@@ -58,6 +69,21 @@ type Composition = {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_INJECTED_CHARS = 20_000;
+
+/**
+ * Default relevance per injection type, applied when a SKILL.md omits an
+ * explicit `priority`. always-on guidance is the floor of taste and outranks
+ * everything; classifier-selected fragments are demonstrably relevant to *this*
+ * prompt and rank just below; declarative detect matches sit lowest. Ordering,
+ * not exclusion — every selected fragment still ships unless the budget or a
+ * runtime floor forces a cut.
+ */
+const DEFAULT_PRIORITY: Record<InjectionType, number> = {
+  always: 1.0,
+  classify: 0.7,
+  detect: 0.5,
+  explicit: 0.5,
+};
 const CONTENT_CACHE = new Map<string, string>();
 const CLASSIFIER_MODEL_CANDIDATES = [
   { provider: "anthropic", id: "claude-haiku-4-5" },
@@ -201,11 +227,20 @@ function discoverSkills(): SkillEntry[] {
       const injection = frontmatter.injection as InjectionType | undefined;
       if (!injection || injection === "explicit") continue; // Pi handles explicit skills natively
 
+      const rawPriority = frontmatter.priority;
+      const parsedPriority =
+        typeof rawPriority === "string" ? Number.parseFloat(rawPriority) : Number.NaN;
+      const priority =
+        Number.isFinite(parsedPriority) && parsedPriority >= 0 && parsedPriority <= 1
+          ? parsedPriority
+          : DEFAULT_PRIORITY[injection];
+
       const entry: SkillEntry = {
         category,
         name: (frontmatter.name as string) ?? dir.name,
         description: (frontmatter.description as string) ?? "",
         injection,
+        priority,
         relativePath: path.join(category, dir.name, "SKILL.md"),
       };
 
@@ -341,14 +376,22 @@ async function collectSelections(
   // 1. Always-on skills
   for (const skill of skills) {
     if (skill.injection === "always") {
-      selections.push({ relativePath: skill.relativePath, reason: skill.description });
+      selections.push({
+        relativePath: skill.relativePath,
+        reason: skill.description,
+        priority: skill.priority,
+      });
     }
   }
 
   // 2. Detect skills — evaluate declarative rules
   for (const skill of skills) {
     if (skill.injection === "detect" && evaluateDetection(skill, dctx)) {
-      selections.push({ relativePath: skill.relativePath, reason: skill.description });
+      selections.push({
+        relativePath: skill.relativePath,
+        reason: skill.description,
+        priority: skill.priority,
+      });
     }
   }
 
@@ -366,6 +409,7 @@ async function collectSelections(
         selections.push({
           relativePath: skill.relativePath,
           reason: `Classifier: ${skill.description}`,
+          priority: skill.priority,
         });
       }
     }
@@ -377,16 +421,27 @@ async function collectSelections(
 async function composeRuntimePrompt(
   dctx: DetectionContext,
   ctx: ExtensionContext,
+  relevanceFloor = 0,
 ): Promise<{ text: string; composition: Composition }> {
   const skills = discoverSkills();
-  const { selections: considered, classifierUsed, classifierMs } = await collectSelections(dctx, ctx);
+  const { selections: collected, classifierUsed, classifierMs } = await collectSelections(dctx, ctx);
+
+  // Intelligent projection, not mechanical: rank by relevance before spending
+  // the budget so a high-priority classified skill can't lose its slot to an
+  // earlier-discovered detect skill. The runtime relevanceFloor (fed by the
+  // health monitor under context pressure) drops the least-relevant fragments
+  // first — floor 0 is a no-op, preserving prior behavior.
+  const ranked = [...collected].sort((a, b) => b.priority - a.priority);
+  const gated = ranked.filter((s) => s.priority >= relevanceFloor);
+  const gatedByFloor = ranked.length - gated.length;
+
   const selected: FragmentSelection[] = [];
   const blocks: string[] = [];
 
   let currentChars = 0;
   let truncated = false;
 
-  for (const candidate of considered) {
+  for (const candidate of gated) {
     const content = await loadSkillContent(candidate.relativePath);
     if (!content) continue;
 
@@ -420,11 +475,38 @@ async function composeRuntimePrompt(
       selected,
       consideredCount: skills.length,
       truncated,
+      gatedByFloor,
+      relevanceFloor,
       injectedChars: currentChars,
       classifierUsed,
       classifierMs,
     },
   };
+}
+
+// ── Health-checkpoint seam ───────────────────────────────────────────────────
+
+// The health monitor (context-threshold) publishes a `health-checkpoint` custom
+// entry onto the session tree carrying the context-pressure-derived
+// relevanceFloor. The two extensions never import each other; the tree is the
+// shared seam. appendEntry state does NOT enter the LLM context, so this is a
+// pure side-channel for composition decisions.
+const HEALTH_CHECKPOINT_TYPE = "health-checkpoint";
+
+function readRelevanceFloor(ctx: ExtensionContext): number {
+  const sm = (ctx as { sessionManager?: { getEntries?: () => unknown[] } }).sessionManager;
+  const entries = sm?.getEntries?.();
+  if (!Array.isArray(entries)) return 0;
+
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i] as { type?: string; customType?: string; data?: { relevanceFloor?: unknown } };
+    if (entry?.type === "custom" && entry.customType === HEALTH_CHECKPOINT_TYPE) {
+      const floor = entry.data?.relevanceFloor;
+      if (typeof floor === "number" && floor >= 0 && floor <= 1) return floor;
+      return 0;
+    }
+  }
+  return 0;
 }
 
 // ── Debug formatting ─────────────────────────────────────────────────────────
@@ -439,6 +521,10 @@ function formatCompositionSummary(c: Composition): string[] {
     `prompt chars injected: ${c.injectedChars}`,
     `truncated: ${c.truncated ? "yes" : "no"}`,
   ];
+
+  if (c.relevanceFloor > 0) {
+    lines.push(`relevance floor: ${c.relevanceFloor.toFixed(2)} (gated ${c.gatedByFloor})`);
+  }
 
   if (c.classifierUsed) {
     const classifiedCount = c.selected.filter((s) => s.reason.startsWith("Classifier:")).length;
@@ -492,7 +578,8 @@ function registerPromptComposer(pi: ExtensionAPI) {
       prompt: event.prompt,
     };
 
-    const result = await composeRuntimePrompt(dctx, ctx);
+    const relevanceFloor = readRelevanceFloor(ctx);
+    const result = await composeRuntimePrompt(dctx, ctx, relevanceFloor);
     lastComposition = result.composition;
 
     if (ctx.hasUI) {

@@ -26,6 +26,25 @@ const HARD_CEILING = 0.85;
 /** Minimum context pressure before we even bother checking heuristics */
 const MONITORING_FLOOR = 0.25;
 
+/**
+ * Max relevance floor published to prompt-composer at peak pressure. The floor
+ * scales linearly from 0 (at MONITORING_FLOOR) to this cap (at HARD_CEILING),
+ * so under pressure the composer sheds its least-relevant fragments first.
+ * Capped below the always-on default priority (1.0) so guardrail skills are
+ * never gated out.
+ */
+const MAX_RELEVANCE_FLOOR = 0.6;
+
+/** Custom session-tree entry type bridging health → prompt-composer. */
+const HEALTH_CHECKPOINT_TYPE = "health-checkpoint";
+
+/**
+ * What the monitor did on the turn a checkpoint was published. Audit signal
+ * only — the consumer (prompt-composer) reads `relevanceFloor`, not `action` —
+ * but it makes the checkpoint legible when inspecting the session /tree.
+ */
+type HealthCheckpointAction = "none" | "prompted" | "compacted" | "snoozed";
+
 /** After user snoozes, wait this many agent turns before re-checking */
 const DEFAULT_SNOOZE_TURNS = 5;
 
@@ -188,25 +207,41 @@ class ContextThresholdExtension extends InterceptorExtensionCore {
     if (!usage) return;
 
     const contextPressure = usage.tokens / usage.contextWindow;
+    const report = this.monitor.getReport(contextPressure);
 
-    // Don't bother checking below the monitoring floor
-    if (contextPressure < MONITORING_FLOOR) return;
+    // Below the monitoring floor the projection should carry no constraint.
+    // Publish a reset checkpoint (relevanceFloor 0) rather than returning
+    // silently — otherwise a stale floor from an earlier high-pressure turn
+    // (e.g. right after a compaction drops pressure) would keep gating
+    // prompt-composer's fragments in a session that is now low-pressure. The
+    // projection must reflect the current world-state, not a past one.
+    if (contextPressure < MONITORING_FLOOR) {
+      this.publishHealthCheckpoint(contextPressure, report, "none");
+      return;
+    }
 
-    // Hard ceiling: always prompt
+    // Hard ceiling: always prompt. Publish first so the floor is current even
+    // if the user dismisses the prompt.
     if (contextPressure >= HARD_CEILING) {
-      await this.promptUser(ctx, this.monitor.getReport(contextPressure), "ceiling");
+      this.publishHealthCheckpoint(contextPressure, report, "prompted");
+      await this.promptUser(ctx, report, "ceiling");
       return;
     }
 
     // Compute effective health threshold based on sensitivity
     // Higher sensitivity → higher threshold → triggers sooner
     const effectiveFloor = BASE_HEALTH_FLOOR + (this.sensitivity - 0.5) * 0.4;
-    const report = this.monitor.getReport(contextPressure);
 
     if (report.health < effectiveFloor) {
+      this.publishHealthCheckpoint(contextPressure, report, "prompted");
       await this.promptUser(ctx, report, "health");
       return;
     }
+
+    // Healthy, above floor, below ceiling: publish the current floor and update
+    // status. This is the producer half of the seam — the two extensions share
+    // the session tree, not an import.
+    this.publishHealthCheckpoint(contextPressure, report, "none");
 
     // Update footer status with health info when above monitoring floor
     const healthIcon = report.health > 0.7 ? "●" : report.health > 0.4 ? "◐" : "○";
@@ -214,6 +249,44 @@ class ContextThresholdExtension extends InterceptorExtensionCore {
       "context",
       `${healthIcon} ctx:${pct(contextPressure)} health:${pct(report.health)}`,
     );
+  }
+
+  /**
+   * Map context pressure to a relevance floor in [0, MAX_RELEVANCE_FLOOR].
+   *
+   * Two terms, then clamped to the cap:
+   *   floor = pressureComponent * MAX_RELEVANCE_FLOOR + (1 - health) * 0.15
+   *
+   * - pressureComponent rises linearly from 0 at MONITORING_FLOOR to 1 at
+   *   HARD_CEILING (and is capped at 1 above the ceiling).
+   * - the health penalty nudges the floor up for a degraded session so it
+   *   sheds marginal guidance sooner, independent of pressure.
+   *
+   * Returns 0 below the monitoring floor. The final clamp to MAX_RELEVANCE_FLOOR
+   * (0.6 < 1.0) guarantees always-on guidance (priority 1.0) is never gated out.
+   */
+  private computeRelevanceFloor(contextPressure: number, health: number): number {
+    if (contextPressure < MONITORING_FLOOR) return 0;
+    const span = HARD_CEILING - MONITORING_FLOOR;
+    const pressureComponent = Math.min(1, (contextPressure - MONITORING_FLOOR) / span);
+    const healthPenalty = (1 - health) * 0.15;
+    const floor = pressureComponent * MAX_RELEVANCE_FLOOR + healthPenalty;
+    return Math.max(0, Math.min(MAX_RELEVANCE_FLOOR, floor));
+  }
+
+  private publishHealthCheckpoint(
+    contextPressure: number,
+    report: HealthReport,
+    action: HealthCheckpointAction,
+  ): void {
+    const relevanceFloor = this.computeRelevanceFloor(contextPressure, report.health);
+    this.pi.appendEntry(HEALTH_CHECKPOINT_TYPE, {
+      turn: this.turnCount,
+      health: report.health,
+      pressure: contextPressure,
+      relevanceFloor,
+      action,
+    });
   }
 
   // ── User engagement ──────────────────────────────────────────────────────
@@ -327,6 +400,27 @@ class ContextThresholdExtension extends InterceptorExtensionCore {
   private doCompact(ctx: ExtensionContext): void {
     this.compacting = true;
     ctx.ui.setStatus("context", "⟳ Compacting…");
+
+    // Transformation-as-node: compaction is a navigation, not a deletion. Label
+    // the pre-compaction leaf so the summarized-past state stays reachable in
+    // the /tree selector — the human can branch back to what compaction projected
+    // away. The originals already persist in the session tree (Pi keeps
+    // firstKeptEntryId on the CompactionEntry); the label just makes the
+    // breadcrumb legible.
+    const leafId = ctx.sessionManager.getLeafId();
+    if (leafId) {
+      this.pi.setLabel(leafId, `pre-compact-t${this.turnCount}`);
+    }
+
+    // Record the compaction itself as a checkpoint with relevanceFloor 0: the
+    // post-compaction projection starts unconstrained, and the action audit on
+    // the tree shows where a compaction happened next to its pre-compact label.
+    this.pi.appendEntry(HEALTH_CHECKPOINT_TYPE, {
+      turn: this.turnCount,
+      relevanceFloor: 0,
+      action: "compacted" as HealthCheckpointAction,
+    });
+
     ctx.compact({
       customInstructions:
         "Proactive compaction triggered by session health monitor. " +
