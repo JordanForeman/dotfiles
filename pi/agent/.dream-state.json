@@ -3,13 +3,13 @@
   "version": 2,
   "cursors": {
     "agent": {
-      "cursor": "",
-      "floor": ""
+      "cursor": "2026-06-05T19:14:41.890Z",
+      "floor": "2026-06-03T15:22:33.945Z"
     },
     "agent-shopify": {
-      "cursor": "2026-06-22T21:58:52.012Z",
+      "cursor": "2026-06-23T19:06:32.741Z",
       "floor": "2026-06-17T18:40:08.381Z"
     }
   },
-  "last_dream": "2026-06-22"
+  "last_dream": "2026-06-23"
 }
