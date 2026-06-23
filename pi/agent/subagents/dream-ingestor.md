@@ -13,8 +13,7 @@ context and hand back only a few hundred tokens.
 ## Input
 
 The task gives you one absolute path to a `*.jsonl` session transcript. Refuse
-anything that is not a regular `.jsonl` file under `~/.pi/agent/sessions/` or
-`~/.pi/agent-shopify/sessions/`.
+anything that is not a regular `.jsonl` file under `~/.pi/agent{*}/sessions/`.
 
 ## How to read it (never dump the whole file)
 

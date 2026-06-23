@@ -12,9 +12,6 @@ what is worth *codifying* into his skills/prompts, generalize it so it is safe
 for a public repo, and propose it as **one PR he reviews**. You never edit `main`
 directly, and you never commit raw work specifics.
 
-This is the human-triggered counterpart to `/skill:daily-brief` and
-`/skill:daily-debrief`. Run it after the debrief.
-
 ## Invariants (do not violate)
 
 - **Propose-only.** All changes land on a branch and a PR. Never commit to `main`.
@@ -39,8 +36,7 @@ This is the human-triggered counterpart to `/skill:daily-brief` and
 
 - **Dotfiles repo**: `~/.dotfiles` (symlink → the checkout). All edits + the
   watermark + the PR happen here. `cd` here first.
-- **Session transcripts**: `~/.pi/agent/sessions/**/*.jsonl` and
-  `~/.pi/agent-shopify/sessions/**/*.jsonl`.
+- **Session transcripts**: `~/.pi/agent{*}/sessions/**/*.jsonl` (multiple potential agents per workstation)
 - **Watermark**: `pi/agent/.dream-state.json` (per-profile cursor map).
 - **Codified knowledge** (the edit targets): `pi/agent/skills/{conventions,guides,formats,standards}/*/SKILL.md`.
 
@@ -68,7 +64,7 @@ learnings. Let the next run process that file once it is complete.
 
 ## Phase 0 — Memory-first recall
 
-Use `swarmy_think` to recall: prior dream runs, recently codified skills, and any
+Use think tools to recall: prior dream runs, recently codified skills, and any
 open dream PR. You want to avoid re-proposing things already learned.
 
 ## Phase 1 — Determine the work set (two-pointer, capped)
