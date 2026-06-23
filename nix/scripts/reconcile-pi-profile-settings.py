@@ -56,6 +56,52 @@ def load_shared_defaults(defaults_path: Path | None) -> tuple[list[Any], list[st
     return list(DEFAULT_SHARED_PACKAGES), list(DEFAULT_SHARED_THEMES), list(DEFAULT_SHARED_PROMPTS), list(DEFAULT_SHARED_SKILLS)
 
 
+def apply_profile_seed(data: dict[str, Any], seed: dict[str, Any]) -> bool:
+    """Merge a profile-local seed into a profile's settings.
+
+    Generic and additive, mirroring the shared-defaults merge: the seed supplies
+    work-local values that no rendered default can regenerate (e.g. an alternate
+    defaultModel/provider, or private package source blocks).
+
+    - Scalar keys (defaultModel, defaultProvider, ...) are seeded ONLY when the
+      profile has not already set them, so runtime edits always win.
+    - `packages` are merged additively by source via ensure_package.
+    - `extensions` (top-level enable/disable directives) are appended if missing.
+    Returns True if anything changed.
+    """
+    changed = False
+
+    for key, value in seed.items():
+        if key in ("packages", "extensions"):
+            continue
+        if key not in data:
+            data[key] = value
+            changed = True
+
+    seed_packages = seed.get("packages")
+    if isinstance(seed_packages, list):
+        packages = data.get("packages")
+        if not isinstance(packages, list):
+            packages = []
+            data["packages"] = packages
+        for item in seed_packages:
+            if ensure_package(packages, item):
+                changed = True
+
+    seed_extensions = seed.get("extensions")
+    if isinstance(seed_extensions, list):
+        extensions = data.get("extensions")
+        if not isinstance(extensions, list):
+            extensions = []
+            data["extensions"] = extensions
+        for item in seed_extensions:
+            if item not in extensions:
+                extensions.append(item)
+                changed = True
+
+    return changed
+
+
 def package_source(item: Any) -> str | None:
     if isinstance(item, str):
         return item
@@ -123,8 +169,24 @@ def main() -> int:
             continue
 
         settings_path = profile / "settings.json"
+
+        # Optional profile-local seed (work-specific values version-controlled
+        # outside this public repo, e.g. via a private overlay). Bootstraps a
+        # missing settings.json and supplies non-regenerable local deltas.
+        seed: dict[str, Any] = {}
+        seed_path = profile / "settings.seed.json"
+        if seed_path.exists():
+            try:
+                loaded_seed = json.loads(seed_path.read_text())
+                if isinstance(loaded_seed, dict):
+                    seed = loaded_seed
+            except Exception:
+                seed = {}
+
         if not settings_path.exists():
-            continue
+            if not seed:
+                continue
+            settings_path.write_text(json.dumps({}, indent=2) + "\n")
 
         try:
             data = json.loads(settings_path.read_text())
@@ -135,6 +197,9 @@ def main() -> int:
             continue
 
         changed = False
+
+        if seed and apply_profile_seed(data, seed):
+            changed = True
 
         packages = data.get("packages")
         if not isinstance(packages, list):
