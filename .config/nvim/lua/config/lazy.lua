@@ -14,12 +14,25 @@ if not (vim.uv or vim.loop).fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
+-- Optional private overlay (machine-specific, version-controlled out of tree).
+-- When ~/.config/nvim-private exists, prepend it to the runtimepath and import
+-- its plugin specs. No-op on machines without the overlay, keeping this config
+-- generic.
+local private_specs = {}
+local private_dir = vim.fn.expand("~/.config/nvim-private")
+if (vim.uv or vim.loop).fs_stat(private_dir) then
+  vim.opt.rtp:prepend(private_dir)
+  private_specs = { { import = "plugins-private" } }
+end
+
 require("lazy").setup({
   spec = {
     -- add LazyVim and import its plugins
     { "LazyVim/LazyVim", import = "lazyvim.plugins" },
     -- import/override with your plugins
     { import = "plugins" },
+    -- optional private overlay specs (empty unless ~/.config/nvim-private exists)
+    unpack(private_specs),
   },
   defaults = {
     -- By default, only LazyVim plugins will be lazy-loaded. Your custom plugins will load during startup.

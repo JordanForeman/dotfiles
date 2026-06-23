@@ -47,6 +47,21 @@
     # Common Home Manager configuration (macOS + Linux)
     homeManagerCommonModules = [ ./nix/home/common.nix ];
 
+    # Optional private overlay, imported on-disk rather than as a flake input so
+    # this public flake stays standalone. Requires --impure to read the
+    # out-of-store path when present. Override with DOTFILES_PRIVATE_OVERLAY;
+    # otherwise defaults to ~/.dotfiles-private.
+    privateDotfilesDir =
+      let
+        fromEnv = builtins.getEnv "DOTFILES_PRIVATE_OVERLAY";
+        home = builtins.getEnv "HOME";
+      in
+      if fromEnv != "" then fromEnv else home + "/.dotfiles-private";
+    privateDotfilesModules =
+      if privateDotfilesDir != "" && builtins.pathExists (privateDotfilesDir + "/nix/home/default.nix")
+      then [ (import (privateDotfilesDir + "/nix/home/default.nix")) ]
+      else [ ];
+
     # Project Ruby version management via mise for personal machines only.
     miseRubyModule = { pkgs, ... }: {
       home.sessionVariables.MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS = "ruby";
@@ -201,7 +216,7 @@
           }
         ] ++ homeManagerCommonModules ++ [
           ./nix/home/shopify-macbook.nix
-        ];
+        ] ++ privateDotfilesModules;
       };
 
       # Omarchy (Arch Linux) - desktop remains Omarchy-managed
