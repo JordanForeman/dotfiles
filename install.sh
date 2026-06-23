@@ -185,7 +185,8 @@ EOF
     fi
   else
     # Work/Home Manager mode
-    if nix run home-manager/master -- build --flake .#$CONFIG; then
+    # --impure lets the flake read the optional on-disk private overlay when present.
+    if nix run home-manager/master -- build --flake .#$CONFIG --impure; then
       echo "✅ Build successful!"
     else
       echo "❌ Build failed. Please check the error messages above."
@@ -208,7 +209,7 @@ EOF
   else
     # Work/Home Manager mode
     echo "   This will backup existing dotfiles with .backup-before-home-manager extension"
-    if nix run home-manager/master -- switch -b backup-before-home-manager --flake .#$CONFIG; then
+    if nix run home-manager/master -- switch -b backup-before-home-manager --flake .#$CONFIG --impure; then
       echo "✅ Configuration activated!"
       echo "   Personal dotfiles now layer alongside existing system management."
     else
