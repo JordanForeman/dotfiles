@@ -33,6 +33,10 @@ in
       ProgramArguments = [
         "${pkgs.colima}/bin/colima"
         "start"
+        "--vm-type"
+        "qemu"
+        "--runtime"
+        "docker"
         "--foreground"
       ];
       RunAtLoad = true;
