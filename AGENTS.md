@@ -313,7 +313,7 @@ Skill body content here.
 - `classify` — injected when an LLM classifier deems the skill relevant to the user's prompt
 - `explicit` — never auto-injected; loaded on demand by Pi's native skill system when referenced by name
 
-The `prompt-composer` extension discovers all non-explicit skills automatically by walking the skills tree and reading frontmatter. **Adding a new skill = adding a directory with a SKILL.md. No extension code changes needed.**
+The `prompt-composer` package reads Pi-loaded skills and auto-injects non-explicit skills based on their frontmatter. **Adding a new skill = adding a directory with a SKILL.md. No local extension code changes needed.**
 
 Do NOT create a `system-fragments/` directory — this is a legacy concept. All contextual knowledge belongs in skills.
 

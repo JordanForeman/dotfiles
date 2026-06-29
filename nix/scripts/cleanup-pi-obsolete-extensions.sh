@@ -11,6 +11,7 @@ for ext_path in \
   "$home_dir/.pi/agent/extensions/subagent" \
   "$home_dir/.pi/agent/extensions/safety-gate.ts" \
   "$home_dir/.pi/agent/extensions/figma-labor" \
+  "$home_dir/.pi/agent/extensions/prompt-composer" \
   "$home_dir/.pi/agent/extensions/figma-mcp.ts"
 do
   if [ -d "$ext_path" ]; then

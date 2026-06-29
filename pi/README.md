@@ -12,7 +12,7 @@ pi/agent/
 ├── prompts/            # User-facing workflow triggers (ship/analyze/plan/learn)
 ├── skills/             # Contextual knowledge (conventions/guides/formats/standards)
 ├── extension-core/     # Shared base classes + workflow engine
-├── extensions/         # Always-on local extensions
+├── extensions/         # Always-on local extensions (package-backed extensions live in settings.json)
 │   └── workflows/      # Workflow extensions (TDD, triage, etc.)
 ├── optional-extensions/ # Opt-in local extensions (loaded via `-e`)
 ├── themes/             # UI themes
@@ -25,6 +25,10 @@ pi/agent/
 **pi-subagents** is the community extension for agent execution:
 - Installed via settings package: `npm:pi-subagents`
 - Agent discovery: `~/.pi/agent/agents` (synced from `pi/agent/subagents/` by Home Manager)
+
+**prompt-composer** is installed as an external Pi package:
+- Source: `git:git@github.com:JordanForeman/pi-prompt-composer.git@1ccb7c4e2d9d491035bb456e9e99222d07f53d23`
+- It composes runtime guidance from the synced `pi/agent/skills/**/SKILL.md` metadata.
 
 ### Inheritance chain (work machine)
 
@@ -47,7 +51,7 @@ Edit inside this repo, then apply Home Manager for the target machine:
 - Skills: `pi/agent/skills/{guides,conventions,formats,standards}/**/SKILL.md`
 - Workflow extensions: `pi/agent/extensions/workflows/*.ts`
 - Extension core: `pi/agent/extension-core/**`
-- Always-on extensions: `pi/agent/extensions/**`
+- Local always-on extensions: `pi/agent/extensions/**`
 - Themes: `pi/agent/themes/*.json`
 
 ## Ralph v2 Workflow

@@ -86,7 +86,7 @@ in
       home.file = optionalExtensionFiles;
     }
     {
-    pi.profileSharedPackages = lib.mkDefault (
+      pi.profileSharedPackages = lib.mkDefault (
       [
         "../agent/extensions/theme-switcher.ts"
         "../agent/extensions/pi-ask.ts"
@@ -157,11 +157,6 @@ in
 
     # Optional extensions are staged outside auto-discovery and loaded ad-hoc (e.g. via `pi -e ...`).
     # Shared extension base classes are synced separately in ~/.pi/agent/extension-core.
-
-    home.file.".pi/agent/extensions/prompt-composer" = {
-      source = ../../pi/agent/extensions/prompt-composer;
-      recursive = true;
-    };
 
     home.file.".pi/agent/extensions/context-threshold" = {
       source = ../../pi/agent/extensions/context-threshold;

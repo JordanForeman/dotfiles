@@ -4,7 +4,7 @@
  * Handles: top-level keys, nested keys (one level), inline arrays [a, b, c],
  * and quoted string values.
  *
- * Also used by prompt-composer (TypeScript version in prompt-composer/index.ts).
+ * Also used by the external prompt-composer package's TypeScript parser.
  * Keep the two in sync if changing parsing behavior.
  */
 
