@@ -1,6 +1,8 @@
 { config, pkgs, lib, piAgent, ... }:
 
 let
+  # Dotfiles consumes pi-agent as a pinned Nix input and syncs resources directly.
+  # pi-agent/package.json supports standalone `pi install` usage, not this path.
   piAgentRoot = piAgent + "/agent";
   settingsTemplate = builtins.fromJSON (builtins.readFile (piAgentRoot + "/settings.json"));
 
@@ -23,6 +25,14 @@ let
 
   optionalExtensionsRoot = piAgentRoot + "/optional-extensions";
 
+  chainFiles = pkgs.runCommand "pi-agent-chains" { } ''
+    mkdir -p "$out"
+    cd ${piAgentRoot}/subagents
+    find . -type f -name '*.chain.md' | while IFS= read -r file; do
+      mkdir -p "$out/$(dirname "$file")"
+      ln -s "${piAgentRoot}/subagents/$file" "$out/$file"
+    done
+  '';
   optionalExtensionFiles = builtins.listToAttrs (
     map
       (name:
@@ -180,9 +190,14 @@ in
     };
 
     # Source-of-truth agent definitions live in pi-agent/agent/subagents, but are synced
-    # to ~/.pi/agent/agents to match pi-subagents discovery paths.
+    # to ~/.pi/agent/agents and ~/.pi/agent/chains to match pi-subagents discovery paths.
     home.file.".pi/agent/agents" = {
       source = piAgentRoot + "/subagents";
+      recursive = true;
+    };
+
+    home.file.".pi/agent/chains" = {
+      source = chainFiles;
       recursive = true;
     };
 

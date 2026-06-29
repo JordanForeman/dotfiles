@@ -3,6 +3,14 @@
 let
   dotfiles = "${config.home.homeDirectory}/.dotfiles";
   piAgentRoot = piAgent + "/agent";
+  chainFiles = pkgs.runCommand "pi-agent-chains" { } ''
+    mkdir -p "$out"
+    cd ${piAgentRoot}/subagents
+    find . -type f -name '*.chain.md' | while IFS= read -r file; do
+      mkdir -p "$out/$(dirname "$file")"
+      ln -s "${piAgentRoot}/subagents/$file" "$out/$file"
+    done
+  '';
 in
 {
   # Shell configuration - use personal zshrc directly
@@ -68,6 +76,11 @@ in
   # so custom subagents (ralph-*, git-ops, etc.) are registered there too.
   home.file.".pi/agent-shopify/agents" = {
     source = piAgentRoot + "/subagents";
+    recursive = true;
+  };
+
+  home.file.".pi/agent-shopify/chains" = {
+    source = chainFiles;
     recursive = true;
   };
 
