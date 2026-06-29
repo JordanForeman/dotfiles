@@ -22,6 +22,10 @@
     home-manager.url = "github:nix-community/home-manager";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
 
+    # Shareable Pi agent configuration (prompts, skills, extensions, agents)
+    pi-agent.url = "git+ssh://git@github.com/JordanForeman/pi-agent.git?ref=main";
+    pi-agent.flake = false;
+
     # SQL TUI (uses its own nixpkgs pin for compatible Python deps)
     sqlit.url = "github:Maxteabag/sqlit";
 
@@ -29,7 +33,7 @@
     zjstatus.url = "github:dj95/zjstatus";
   };
 
-  outputs = inputs@{ self, nixpkgs, nix-darwin, home-manager, sqlit, zjstatus }:
+  outputs = inputs@{ self, nixpkgs, nix-darwin, home-manager, sqlit, zjstatus, pi-agent }:
   let
     # Supported systems
     supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
@@ -97,6 +101,7 @@
           home-manager.extraSpecialArgs = {
             sqlit = sqlit.packages.aarch64-darwin.default;
             zjstatus = zjstatus.packages.aarch64-darwin.default;
+            piAgent = pi-agent;
           };
           home-manager.users.jordan = {
             home = {
@@ -205,6 +210,7 @@
         extraSpecialArgs = {
           sqlit = sqlit.packages.aarch64-darwin.default;
           zjstatus = zjstatus.packages.aarch64-darwin.default;
+          piAgent = pi-agent;
         };
         modules = [
           {
@@ -225,6 +231,7 @@
         extraSpecialArgs = {
           sqlit = sqlit.packages.x86_64-linux.default;
           zjstatus = zjstatus.packages.x86_64-linux.default;
+          piAgent = pi-agent;
         };
         modules = [
           {
@@ -246,6 +253,7 @@
         extraSpecialArgs = {
           sqlit = sqlit.packages.x86_64-linux.default;
           zjstatus = zjstatus.packages.x86_64-linux.default;
+          piAgent = pi-agent;
         };
         modules = [
           {

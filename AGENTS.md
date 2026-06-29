@@ -22,25 +22,20 @@ dotfiles/
 │   └── pkgs/                 # Custom packages
 ├── .config/                  # App configs (nvim, ghostty, zellij, etc.)
 ├── .gitconfig/.zshrc/.aliases
-├── pi/                       # Version-controlled Pi config source
-│   ├── README.md             # Infrastructure: syncing, inheritance, troubleshooting
-│   └── agent/
-│       ├── subagents/           # Agent defs (synced to ~/.pi/agent/agents)
-│       ├── extensions/
-│       │   └── workflows/       # Workflow extensions (TDD, triage, etc.)
-│       ├── extension-core/      # Shared base classes + workflow engine
-│       ├── prompts/
-│       ├── skills/
-│       └── themes/
+├── flake.lock                # Pins external inputs, including pi-agent
 └── AGENTS.md                 # ← You are here. Single source of truth.
 ```
+
+External: `git@github.com:JordanForeman/pi-agent.git` owns Pi prompts, skills,
+extensions, subagents, themes, settings, and keybindings. This repo consumes it
+via the `pi-agent` flake input.
 
 ## Editing Rules
 
 1. Prefer small, focused, reversible changes.
 2. Preserve existing style and structure in each file type (Nix, shell, Lua, TOML, JSON, Markdown).
 3. Do not commit generated artifacts (`result`, backups, `node_modules`, etc.).
-4. For Pi-related changes, edit `pi/` in this repo, **not** `~/.pi/` directly.
+4. For Pi-related changes, edit `~/Developer/pi-agent`, **not** `~/.pi/` directly.
 5. Avoid unrelated refactors while touching config files.
 
 ## Session Behavior
@@ -128,19 +123,19 @@ For tools like Neovim, Ghostty, Zellij, Git, Zsh:
   - See `nix/machines/shopify-macbook.md` for sync workflows
   - Machine-specific overrides go in `~/.gitconfig.local` (gitignored)
 
-### 3) Pi configuration changes (subset of this repo)
+### 3) Pi configuration changes (external repo)
 
-Pi is one part of the repo; keep it isolated to `pi/`:
-- Agents (source): `pi/agent/subagents/`
-- Optional chain files: `pi/agent/subagents/*.chain.md`
-- Workflow extensions: `pi/agent/extensions/workflows/`
-- Extensions: `pi/agent/extensions/`
-- Extension core + workflow engine: `pi/agent/extension-core/`
-- Skills: `pi/agent/skills/`
-- Prompts: `pi/agent/prompts/`
-- Themes: `pi/agent/themes/`
+Pi agent configuration now lives in `~/Developer/pi-agent` and is pinned into this flake via the `pi-agent` input:
+- Agents (source): `~/Developer/pi-agent/agent/subagents/`
+- Optional chain files: `~/Developer/pi-agent/agent/subagents/*.chain.md`
+- Workflow extensions: `~/Developer/pi-agent/agent/extensions/workflows/`
+- Extensions: `~/Developer/pi-agent/agent/extensions/`
+- Extension core + workflow engine: `~/Developer/pi-agent/agent/extension-core/`
+- Skills: `~/Developer/pi-agent/agent/skills/`
+- Prompts: `~/Developer/pi-agent/agent/prompts/`
+- Themes: `~/Developer/pi-agent/agent/themes/`
 
-If changing Pi architecture/docs, also update this file and `pi/README.md`.
+After changing Pi config, commit and push `~/Developer/pi-agent`, then update this repo's `pi-agent` flake input/lock.
 
 ---
 
@@ -167,7 +162,7 @@ Skills (Knowledge)     "How to do it well"     safety, debugging, naming, testin
 
 ### 4) Prompts
 
-Prompts are reusable workflow triggers invoked by the user (e.g. `/plan`, `/review`). They live under `pi/agent/prompts/` and are organized by **workflow intent**:
+Prompts are reusable workflow triggers invoked by the user (e.g. `/plan`, `/review`). They live under `~/Developer/pi-agent/agent/prompts/` and are organized by **workflow intent**:
 
 | Category | Purpose | Example |
 |---|---|---|
@@ -192,7 +187,7 @@ Prompts should NOT use skills' pedagogical categories (`guides/conventions/forma
 
 ### 5) Workflow Extensions
 
-Workflow extensions live in `pi/agent/extensions/workflows/` and manage multi-phase, lifecycle-aware coordination. They use the shared `WorkflowEngine` from `pi/agent/extension-core/workflow-engine.ts`.
+Workflow extensions live in `~/Developer/pi-agent/agent/extensions/workflows/` and manage multi-phase, lifecycle-aware coordination. They use the shared `WorkflowEngine` from `~/Developer/pi-agent/agent/extension-core/workflow-engine.ts`.
 
 **Execution model** (hybrid engine + LLM):
 - The engine manages phase state, transitions, UI status, and context accumulation
@@ -227,7 +222,7 @@ const MY_WORKFLOW: WorkflowDefinition = {
       label: "📋 First phase",
       execution: "sequential",        // or "parallel"
       tasks: [{
-        agent: "some-subagent",        // must exist in pi/agent/subagents/
+        agent: "some-subagent",        // must exist in ~/Developer/pi-agent/agent/subagents/
         task: "Do the thing for: {input}",
       }],
       transition: { type: "advance" }, // or "conditional" or "loop"
@@ -256,13 +251,13 @@ export default function myWorkflow(pi: ExtensionAPI) {
 }
 ```
 
-See `pi/agent/extensions/workflows/tdd.ts` (sequential) and `triage.ts` (parallel + conditional) as examples.
+See `~/Developer/pi-agent/agent/extensions/workflows/tdd.ts` (sequential) and `triage.ts` (parallel + conditional) as examples.
 
 Do NOT create orchestration JSON files — this is a legacy concept. The validator guards against it.
 
 ### 6) Subagents
 
-Subagent definitions live in `pi/agent/subagents/*.md`. They are markdown files with YAML frontmatter consumed by the `pi-subagents` community extension.
+Subagent definitions live in `~/Developer/pi-agent/agent/subagents/*.md`. They are markdown files with YAML frontmatter consumed by the `pi-subagents` community extension.
 
 **Required frontmatter:** `name`, `description` (validated).
 
@@ -279,11 +274,11 @@ System prompt body here...
 
 `tools` must be comma-separated (`read, bash, grep`) — space-separated will not parse correctly.
 
-At runtime, Home Manager syncs `pi/agent/subagents/*` → `~/.pi/agent/agents/*`.
+At runtime, Home Manager syncs `~/Developer/pi-agent/agent/subagents/*` → `~/.pi/agent/agents/*`.
 
 ### 7) Skills
 
-Skills are the unified system for contextual knowledge. They live under `pi/agent/skills/` and are organized by **pedagogical type** (what the skill teaches the agent):
+Skills are the unified system for contextual knowledge. They live under `~/Developer/pi-agent/agent/skills/` and are organized by **pedagogical type** (what the skill teaches the agent):
 
 | Category | Purpose | Example |
 |---|---|---|
@@ -319,7 +314,7 @@ Do NOT create a `system-fragments/` directory — this is a legacy concept. All 
 
 ### 8) Extensions
 
-Extensions use inheritance-based taxonomy via `pi/agent/extension-core`:
+Extensions use inheritance-based taxonomy via `~/Developer/pi-agent/agent/extension-core`:
 
 | Base class | Category | Purpose |
 |---|---|---|
@@ -336,7 +331,7 @@ Each extension should be a thin adapter over shared core behavior so UI patterns
 ## Validation
 
 ```bash
-node pi/agent/scripts/validate-taxonomy.mjs
+cd ~/Developer/pi-agent && node agent/scripts/validate-taxonomy.mjs
 ```
 
 This enforces: prompt categories, skill structure/frontmatter, subagent frontmatter, cross-references (prompt `subagents:` → real agents), extension base classes, and legacy directory guards.

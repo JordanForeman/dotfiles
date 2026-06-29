@@ -1,7 +1,8 @@
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, piAgent, ... }:
 
 let
-  settingsTemplate = builtins.fromJSON (builtins.readFile ../../pi/agent/settings.json);
+  piAgentRoot = piAgent + "/agent";
+  settingsTemplate = builtins.fromJSON (builtins.readFile (piAgentRoot + "/settings.json"));
 
   renderedBaseSettings = pkgs.writeText "pi-settings.json" (
     builtins.toJSON (settingsTemplate // {
@@ -18,9 +19,9 @@ let
     }
   );
 
-  fusionPresets = ../../pi/agent/fusion.json;
+  fusionPresets = piAgentRoot + "/fusion.json";
 
-  optionalExtensionsRoot = ../../pi/agent/optional-extensions;
+  optionalExtensionsRoot = piAgentRoot + "/optional-extensions";
 
   optionalExtensionFiles = builtins.listToAttrs (
     map
@@ -141,17 +142,17 @@ in
         "${config.home.homeDirectory}"
     '';
 
-    home.file.".pi/agent/keybindings.json".source = ../../pi/agent/keybindings.json;
+    home.file.".pi/agent/keybindings.json".source = piAgentRoot + "/keybindings.json";
 
     # Extension package loading is handled via settings packages.
     # Local shareable extensions are symlinked normally.
-    home.file.".pi/agent/extensions/theme-switcher.ts".source = ../../pi/agent/extensions/theme-switcher.ts;
-    home.file.".pi/agent/extensions/pi-ask.ts".source = ../../pi/agent/extensions/pi-ask.ts;
-    home.file.".pi/agent/extensions/ralph-loop.ts".source = ../../pi/agent/extensions/ralph-loop.ts;
-    home.file.".pi/agent/extensions/discipline-gate.ts".source = ../../pi/agent/extensions/discipline-gate.ts;
-    home.file.".pi/agent/extensions/linear.ts".source = ../../pi/agent/extensions/linear.ts;
+    home.file.".pi/agent/extensions/theme-switcher.ts".source = piAgentRoot + "/extensions/theme-switcher.ts";
+    home.file.".pi/agent/extensions/pi-ask.ts".source = piAgentRoot + "/extensions/pi-ask.ts";
+    home.file.".pi/agent/extensions/ralph-loop.ts".source = piAgentRoot + "/extensions/ralph-loop.ts";
+    home.file.".pi/agent/extensions/discipline-gate.ts".source = piAgentRoot + "/extensions/discipline-gate.ts";
+    home.file.".pi/agent/extensions/linear.ts".source = piAgentRoot + "/extensions/linear.ts";
     home.file.".pi/agent/extension-core" = {
-      source = ../../pi/agent/extension-core;
+      source = piAgentRoot + "/extension-core";
       recursive = true;
     };
 
@@ -159,29 +160,29 @@ in
     # Shared extension base classes are synced separately in ~/.pi/agent/extension-core.
 
     home.file.".pi/agent/extensions/context-threshold" = {
-      source = ../../pi/agent/extensions/context-threshold;
+      source = piAgentRoot + "/extensions/context-threshold";
       recursive = true;
     };
 
     home.file.".pi/agent/prompts" = {
-      source = ../../pi/agent/prompts;
+      source = piAgentRoot + "/prompts";
       recursive = true;
     };
 
     home.file.".pi/agent/skills" = {
-      source = ../../pi/agent/skills;
+      source = piAgentRoot + "/skills";
       recursive = true;
     };
 
     home.file.".pi/agent/themes" = {
-      source = ../../pi/agent/themes;
+      source = piAgentRoot + "/themes";
       recursive = true;
     };
 
-    # Source-of-truth agent definitions live in pi/agent/subagents, but are synced
+    # Source-of-truth agent definitions live in pi-agent/agent/subagents, but are synced
     # to ~/.pi/agent/agents to match pi-subagents discovery paths.
     home.file.".pi/agent/agents" = {
-      source = ../../pi/agent/subagents;
+      source = piAgentRoot + "/subagents";
       recursive = true;
     };
 

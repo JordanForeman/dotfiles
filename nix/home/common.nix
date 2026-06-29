@@ -15,22 +15,6 @@ in
   imports = [
     ./pi.nix
   ];
-
-  pi.extensions = [
-    {
-      source = "git:https://github.com/pascal-de-ladurantaye/pi-agent@main";
-      extensions = [
-        "extensions/bash-guard/**"
-      ];
-      skills = [ ];
-      prompts = [ ];
-      themes = [ ];
-    }
-    "npm:pi-subagents"
-    "npm:pi-powerline-footer"
-  ];
-
-
   pi.optionalExtensions = [
     "figma-labor"
     "figma-mcp.ts"

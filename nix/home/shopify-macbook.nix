@@ -1,7 +1,8 @@
-{ config, pkgs, lib, sqlit, ... }:
+{ config, pkgs, lib, sqlit, piAgent, ... }:
 
 let
   dotfiles = "${config.home.homeDirectory}/.dotfiles";
+  piAgentRoot = piAgent + "/agent";
 in
 {
   # Shell configuration - use personal zshrc directly
@@ -56,7 +57,7 @@ in
   # Pi agent configuration (shareable base)
   # Note: Local-only content (secrets, Shopify MCP wrappers) stays in ~/.pi/agent/
   home.file.".pi/agent/agents" = {
-    source = ../../pi/agent/subagents;
+    source = piAgentRoot + "/subagents";
     recursive = true;
   };
 
@@ -66,18 +67,18 @@ in
   # invisible to that profile. Sync the same definitions into the shopify profile
   # so custom subagents (ralph-*, git-ops, etc.) are registered there too.
   home.file.".pi/agent-shopify/agents" = {
-    source = ../../pi/agent/subagents;
+    source = piAgentRoot + "/subagents";
     recursive = true;
   };
 
   home.file.".pi/agent/prompts" = {
-    source = ../../pi/agent/prompts;
+    source = piAgentRoot + "/prompts";
     recursive = true;
   };
 
 
   home.file.".pi/agent/skills" = {
-    source = ../../pi/agent/skills;
+    source = piAgentRoot + "/skills";
     recursive = true;
   };
 
@@ -85,17 +86,17 @@ in
 
   # Pi settings template (can be customized locally)
   home.file.".pi/agent/settings-template.json" = {
-    source = ../../pi/agent/settings.json;
+    source = piAgentRoot + "/settings.json";
   };
 
   # Pi keybindings (shareable)
   home.file.".pi/agent/keybindings.json" = {
-    source = ../../pi/agent/keybindings.json;
+    source = piAgentRoot + "/keybindings.json";
   };
 
   # Pi themes (shareable)
   home.file.".pi/agent/themes" = {
-    source = ../../pi/agent/themes;
+    source = piAgentRoot + "/themes";
     recursive = true;
   };
 

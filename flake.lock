@@ -139,11 +139,29 @@
         "type": "github"
       }
     },
+    "pi-agent": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1782747759,
+        "narHash": "sha256-FDA/fYbgB00SsTeyap6a4ct81CmAWDkGW1GBgWmfXQc=",
+        "ref": "main",
+        "rev": "2d989c95174ff23b6dade140d9538f1f14936326",
+        "revCount": 1,
+        "type": "git",
+        "url": "ssh://git@github.com/JordanForeman/pi-agent.git"
+      },
+      "original": {
+        "ref": "main",
+        "type": "git",
+        "url": "ssh://git@github.com/JordanForeman/pi-agent.git"
+      }
+    },
     "root": {
       "inputs": {
         "home-manager": "home-manager",
         "nix-darwin": "nix-darwin",
         "nixpkgs": "nixpkgs",
+        "pi-agent": "pi-agent",
         "sqlit": "sqlit",
         "zjstatus": "zjstatus"
       }

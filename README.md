@@ -15,7 +15,7 @@ This repo is the source of truth for day-to-day terminal/editor/tooling setup.
 - CLI tooling (ripgrep, fd, eza, bat, gh, neovim, lazygit, etc.)
 - macOS system packages and GUI apps (on personal machines)
 - User-level dotfiles (`.zshrc`, `.aliases`, `.gitconfig`, app configs under `.config/`)
-- Pi agent shared configuration (`pi/agent/...`)
+- Pi agent shared configuration via external `pi-agent` flake input
 
 ## What this does **not** manage
 
@@ -115,22 +115,19 @@ dotfiles/
 │   └── pkgs/                 # Custom package defs
 ├── .config/                  # App configs (nvim, ghostty, zellij, etc.)
 ├── .zshrc / .aliases / .gitconfig
-├── pi/                       # Versioned Pi config source
+├── flake.lock                # Pins Nix inputs, including external pi-agent config
 └── README.md / USAGE.md
 ```
 
 ---
 
-## Pi configuration in this repo
+## Pi configuration
 
-Pi config is versioned under `pi/` and synced into `~/.pi/agent` through Home Manager modules.
+Shared Pi config is versioned separately in `git@github.com:JordanForeman/pi-agent.git` and pinned here as the `pi-agent` flake input. Home Manager syncs that input into `~/.pi/agent`.
 
-If you want to change shared Pi behavior, edit:
-- `pi/agent/subagents/`
-- `pi/agent/extensions/`
-- `pi/agent/prompts/`
-- `pi/agent/skills/`
-- `pi/agent/themes/`
+If you want to change shared Pi behavior, edit `~/Developer/pi-agent`, commit and push it, then update this repo's flake lock for `pi-agent`.
+
+Fresh machines need GitHub SSH auth before Nix can fetch this private `pi-agent` input.
 
 Do **not** edit machine-local runtime state in `~/.pi/agent` and expect it to be portable.
 
@@ -151,4 +148,4 @@ Do **not** edit machine-local runtime state in `~/.pi/agent` and expect it to be
 - `USAGE.md` — command-focused reference
 - `nix/README.md` — module conventions and reconciliation policies
 - `nix/machines/README.md` — machine-target notes
-- `pi/README.md` — Pi-specific architecture and inheritance details
+- `~/Developer/pi-agent/README.md` — Pi-specific architecture and inheritance details
