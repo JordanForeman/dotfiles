@@ -66,20 +66,21 @@
       then [ (import (privateDotfilesDir + "/nix/home/default.nix")) ]
       else [ ];
 
+    herdrPackage = pkgs: import ./nix/pkgs/herdr.nix { inherit pkgs; };
+
     # Personal-only GUI/dev apps; exclude work-provisioned Home Manager configs.
     personalAppsModule = { pkgs, lib, ... }: {
-      home.packages = with pkgs; [
+      home.packages = (with pkgs; [
         openscad
+      ]) ++ [
+        (herdrPackage pkgs)
       ] ++ lib.optionals pkgs.stdenv.isLinux [
-        blender
+        pkgs.blender
       ];
     };
 
     personalDarwinAppsModule = {
       homebrew = {
-        brews = [
-          "herdr"
-        ];
         # Nixpkgs Blender is currently marked broken on Darwin; use the official cask there.
         casks = [
           "blender"
@@ -256,6 +257,21 @@
         ] ++ homeManagerCommonModules ++ [
           ./nix/home/shopify-macbook.nix
         ] ++ privateDotfilesModules;
+      };
+
+      # Ubuntu homelab server - start bare-bones and map shared config in deliberately
+      "jordan@home1" = home-manager.lib.homeManagerConfiguration {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+        modules = [
+          {
+            home = {
+              username = "jordan";
+              homeDirectory = "/home/jordan";
+              stateVersion = "25.05";
+            };
+          }
+          ./nix/home/home1.nix
+        ];
       };
 
       # Omarchy (Arch Linux) - desktop remains Omarchy-managed

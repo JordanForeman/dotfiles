@@ -342,10 +342,15 @@ EOF
   echo ""
 
   # Resolve Linux home-manager configuration
+  CONFIG=""
   USERNAME=$(whoami)
-  HOSTNAME=$(hostname)
+  HOSTNAME=$(hostname -s)
 
-  CANDIDATES=("$USERNAME@$HOSTNAME" "jordan@$HOSTNAME" "jordan@omarchy")
+  if [[ -n "${DOTFILES_LINUX_CONFIG:-}" ]]; then
+    CANDIDATES=("$DOTFILES_LINUX_CONFIG")
+  else
+    CANDIDATES=("$USERNAME@$HOSTNAME" "jordan@$HOSTNAME")
+  fi
 
   # De-duplicate candidates (bash associative array).
   declare -A SEEN
