@@ -66,6 +66,28 @@
       then [ (import (privateDotfilesDir + "/nix/home/default.nix")) ]
       else [ ];
 
+    # Personal-only GUI/dev apps; exclude work-provisioned Home Manager configs.
+    personalAppsModule = { pkgs, lib, ... }: {
+      home.packages = with pkgs; [
+        openscad
+      ] ++ lib.optionals pkgs.stdenv.isLinux [
+        blender
+      ];
+    };
+
+    personalDarwinAppsModule = {
+      homebrew = {
+        brews = [
+          "herdr"
+        ];
+        # Nixpkgs Blender is currently marked broken on Darwin; use the official cask there.
+        casks = [
+          "blender"
+          "steam"
+        ];
+      };
+    };
+
     # Project Ruby version management via mise for personal machines only.
     miseRubyModule = { pkgs, ... }: {
       home.sessionVariables.MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS = "ruby";
@@ -89,10 +111,11 @@
       '';
     };
 
-    mkDarwin = extraHmModules: nix-darwin.lib.darwinSystem {
+    mkDarwin = { extraDarwinModules ? [ ], extraHmModules ? [ ] }: nix-darwin.lib.darwinSystem {
       system = "aarch64-darwin";
       modules = [
         darwinConfig
+      ] ++ extraDarwinModules ++ [
         home-manager.darwinModules.home-manager
         {
           home-manager.useGlobalPkgs = true;
@@ -141,6 +164,7 @@
         brews = [
           "starship"
           "borders"
+          "hunk"
         ];
         casks = [
           "visual-studio-code" "ghostty" "dbeaver-community"
@@ -164,42 +188,51 @@
   {
     # macOS configurations
     darwinConfigurations = {
-      "personal-macbook" = mkDarwin [ ./nix/home/darwin.nix ./nix/home/personal-npm.nix miseRubyModule ];
-      "work-macbook" = mkDarwin [ ./nix/home/darwin.nix ];
-      "Jordans-MacBook-Pro" = mkDarwin [
-        ./nix/home/darwin.nix
-        ./nix/home/personal-npm.nix
-        miseRubyModule
-        ({ config, pkgs, ... }: {
-          home.packages = [
-            pkgs.docker
-            pkgs.postgresql
-            pkgs.postgresql.pg_config
-            pkgs.libpq
-            (pkgs.writeShellScriptBin "caffeinate" ''
-              exec /usr/bin/caffeinate -im "$@"
-            '')
-          ];
+      "personal-macbook" = mkDarwin {
+        extraDarwinModules = [ personalDarwinAppsModule ];
+        extraHmModules = [ ./nix/home/darwin.nix ./nix/home/personal-npm.nix personalAppsModule miseRubyModule ];
+      };
+      "work-macbook" = mkDarwin {
+        extraHmModules = [ ./nix/home/darwin.nix ];
+      };
+      "Jordans-MacBook-Pro" = mkDarwin {
+        extraDarwinModules = [ personalDarwinAppsModule ];
+        extraHmModules = [
+          ./nix/home/darwin.nix
+          ./nix/home/personal-npm.nix
+          personalAppsModule
+          miseRubyModule
+          ({ config, pkgs, ... }: {
+            home.packages = [
+              pkgs.docker
+              pkgs.postgresql
+              pkgs.postgresql.pg_config
+              pkgs.libpq
+              (pkgs.writeShellScriptBin "caffeinate" ''
+                exec /usr/bin/caffeinate -im "$@"
+              '')
+            ];
 
-          launchd.agents.postgres = {
-            enable = true;
-            config = {
-              EnvironmentVariables = {
-                DOCKER_HOST = "unix://${config.home.homeDirectory}/.colima/default/docker.sock";
+            launchd.agents.postgres = {
+              enable = true;
+              config = {
+                EnvironmentVariables = {
+                  DOCKER_HOST = "unix://${config.home.homeDirectory}/.colima/default/docker.sock";
+                };
+                ProgramArguments = [
+                  "/bin/sh"
+                  "-c"
+                  "while ! ${pkgs.docker}/bin/docker info >/dev/null 2>&1; do sleep 1; done; if ${pkgs.docker}/bin/docker ps --format '{{.Names}}' | /usr/bin/grep -qx postgres; then ${pkgs.docker}/bin/docker logs -f postgres; elif ${pkgs.docker}/bin/docker container inspect postgres >/dev/null 2>&1; then ${pkgs.docker}/bin/docker start -a postgres; else ${pkgs.docker}/bin/docker run --name postgres -p 127.0.0.1:5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres -v postgres-data:/var/lib/postgresql/data postgres:17; fi"
+                ];
+                RunAtLoad = true;
+                KeepAlive = true;
+                StandardOutPath = "/tmp/postgres.log";
+                StandardErrorPath = "/tmp/postgres.err.log";
               };
-              ProgramArguments = [
-                "/bin/sh"
-                "-c"
-                "while ! ${pkgs.docker}/bin/docker info >/dev/null 2>&1; do sleep 1; done; if ${pkgs.docker}/bin/docker ps --format '{{.Names}}' | /usr/bin/grep -qx postgres; then ${pkgs.docker}/bin/docker logs -f postgres; elif ${pkgs.docker}/bin/docker container inspect postgres >/dev/null 2>&1; then ${pkgs.docker}/bin/docker start -a postgres; else ${pkgs.docker}/bin/docker run --name postgres -p 127.0.0.1:5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=postgres -v postgres-data:/var/lib/postgresql/data postgres:17; fi"
-              ];
-              RunAtLoad = true;
-              KeepAlive = true;
-              StandardOutPath = "/tmp/postgres.log";
-              StandardErrorPath = "/tmp/postgres.err.log";
             };
-          };
-        })
-      ];
+          })
+        ];
+      };
     };
 
     # Home Manager configurations (including Shopify MacBook)
@@ -243,6 +276,7 @@
           }
         ] ++ homeManagerCommonModules ++ [
           ./nix/home/omarchy.nix
+          personalAppsModule
           miseRubyModule
         ];
       };
@@ -263,7 +297,9 @@
               stateVersion = "25.05";
             };
           }
-        ] ++ homeManagerCommonModules;
+        ] ++ homeManagerCommonModules ++ [
+          personalAppsModule
+        ];
       };
     };
 

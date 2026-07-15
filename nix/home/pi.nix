@@ -24,6 +24,8 @@ let
   fusionPresets = piAgentRoot + "/fusion.json";
 
   optionalExtensionsRoot = piAgentRoot + "/optional-extensions";
+  hunkSkillExtension = piAgentRoot + "/extensions/hunk-skill.ts";
+  hasHunkSkillExtension = builtins.pathExists hunkSkillExtension;
 
   chainFiles = pkgs.runCommand "pi-agent-chains" { } ''
     mkdir -p "$out"
@@ -94,7 +96,9 @@ in
 
   config = lib.mkMerge [
     {
-      home.file = optionalExtensionFiles;
+      home.file = optionalExtensionFiles // lib.optionalAttrs hasHunkSkillExtension {
+        ".pi/agent/extensions/hunk-skill.ts".source = hunkSkillExtension;
+      };
     }
     {
       pi.profileSharedPackages = lib.mkDefault (
@@ -104,6 +108,9 @@ in
         "../agent/extensions/ralph-loop.ts"
         "../agent/extensions/discipline-gate.ts"
         "../agent/extensions/context-threshold/index.ts"
+      ]
+      ++ lib.optionals hasHunkSkillExtension [
+        "../agent/extensions/hunk-skill.ts"
       ]
       ++ config.pi.extensions
     );
