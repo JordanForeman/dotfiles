@@ -50,7 +50,6 @@ window-padding-balance = true
 font-size = 10
 theme = "Bluloco Dark"
 macos-titlebar-style = "hidden"
-keybind = shift+enter=text:\x1b\r
 
 custom-shader = shaders/cursor_warp.glsl
 
