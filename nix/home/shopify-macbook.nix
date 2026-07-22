@@ -24,6 +24,14 @@ in
   # AeroSpace is macOS-only
   xdg.configFile."aerospace".source = config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/aerospace";
 
+  # Herdr agent-detection override for Pi (herdr.dev's remote manifest ships no
+  # `blocked` rule, so a pane on the pi-ask ask_user selector reads as idle and
+  # never lights the needs-input indicator). Symlink only this one file — not the
+  # herdr/ dir (runtime sockets, logs) or agent-detection/ (Herdr's own local/ +
+  # overrides/ subdirs). Herdr is delivered via devx, so this is work-machine only.
+  xdg.configFile."herdr/agent-detection/pi.toml".source =
+    config.lib.file.mkOutOfStoreSymlink "${dotfiles}/.config/herdr/agent-detection/pi.toml";
+
 
   # Neovim - not managed by home-manager (edit directly in dotfiles)
   # Already symlinked via install script, avoids nix store hash churn

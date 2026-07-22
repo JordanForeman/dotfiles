@@ -1,0 +1,53 @@
+# Local override for Herdr's Pi agent-detection manifest.
+# Shadows the auto-fetched remote manifest at
+# ~/.local/state/herdr/agent-detection/remote/pi.toml (source: herdr.dev).
+#
+# Why this exists: the remote manifest only ships a `working` rule, so a Pi
+# pane waiting on the pi-ask `ask_user` selector reads as `idle` and never
+# turns Herdr's needs-input (blocked) indicator on. These rules add `blocked`
+# detection for the ask_user selector, keyed on strings rendered by
+# ~/.pi/agent/extensions/pi-ask.ts, plus a defensive detail-mode variant.
+#
+# Bump `version` above the remote's date-version whenever you edit, so the
+# override keeps winning after a remote refresh.
+
+id = "pi"
+version = "2026.07.22.1"
+min_engine_version = 1
+updated_at = "2026-07-22T00:00:00Z"
+aliases = ["herdr:pi"]
+
+# Needs-input: the ask_user selector is on screen (select mode).
+# Requires two fingerprints that co-occur only in a live selector: the freeform
+# option "Write a custom response" (always rendered last) and the footer glyph
+# string "1-9 select" (both the allowAdditionalText and plain footers contain
+# it). Demanding the glyph footer avoids false positives from ordinary prose
+# that merely contains the words "select" or "custom".
+[[rules]]
+id = "ask_user_selector"
+state = "blocked"
+priority = 900
+region = "bottom_non_empty_lines(8)"
+visible_blocker = true
+contains = ["Write a custom response", "1-9 select"]
+
+# Needs-input: the ask_user selector detail-editing mode (Tab pressed to add
+# free text). The select-mode footer is replaced by the detail footer
+# ("Shift+Enter newline \u2022 Enter submit \u2022 Tab/Esc back"), so match its
+# stable tokens alongside the still-visible freeform label.
+[[rules]]
+id = "ask_user_detail"
+state = "blocked"
+priority = 900
+region = "bottom_non_empty_lines(8)"
+visible_blocker = true
+contains = ["Write a custom response", "Shift+Enter", "submit"]
+
+# Preserve the remote manifest's working detection.
+[[rules]]
+id = "working_literal"
+state = "working"
+priority = 100
+region = "whole_recent"
+visible_working = true
+contains = ["Working..."]
