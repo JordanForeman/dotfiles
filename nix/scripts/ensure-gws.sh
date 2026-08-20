@@ -7,10 +7,13 @@ set -euo pipefail
 # Uses ~/.npm-global as the prefix so we don't write into the read-only Nix store.
 
 npm_bin="$1"
+extra_path="${2:-}"
 prefix="$HOME/.npm-global"
 
-# Ensure node is on PATH for postinstall scripts
-export PATH="$(dirname "$npm_bin"):$PATH"
+# Ensure node and postinstall helpers are on PATH.
+# Home Manager activation can run with a minimal PATH that omits /usr/bin, so
+# npm postinstall scripts should not rely on distro tools being discoverable.
+export PATH="$(dirname "$npm_bin")${extra_path:+:$extra_path}:$PATH"
 
 mkdir -p "$prefix"
 

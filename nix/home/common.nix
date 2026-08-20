@@ -76,7 +76,6 @@ in
     # SQL TUI
     sqlit
 
-    mise
     pair-review
 
     # Development tools
@@ -94,6 +93,10 @@ in
     # Zsh plugins
     zsh-autocomplete
     zsh-autosuggestions
+  ] ++ lib.optionals pkgs.stdenv.isDarwin [
+    # Linux desktops such as Omarchy should prefer the distro-provided mise;
+    # Home Manager's profile path can otherwise shadow newer system packages.
+    mise
   ];
 
   # Pi coding agent (installed globally via npm)
@@ -103,6 +106,8 @@ in
 
   # Google Workspace CLI (installed globally via npm)
   home.activation.installGws = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    ${pkgs.bash}/bin/bash ${../scripts/ensure-gws.sh} ${pkgs.nodejs}/bin/npm
+    ${pkgs.bash}/bin/bash ${../scripts/ensure-gws.sh} \
+      ${pkgs.nodejs}/bin/npm \
+      ${lib.makeBinPath [ pkgs.gnutar pkgs.gzip ]}
   '';
 }

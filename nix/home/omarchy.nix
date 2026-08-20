@@ -20,8 +20,8 @@
         . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
       fi
 
-      # home-manager wrapper location
-      export PATH="$HOME/.local/bin:$PATH"
+      # home-manager wrapper and npm-global locations
+      export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 
       # Project Ruby version management via mise
       export MISE_IDIOMATIC_VERSION_FILE_ENABLE_TOOLS="ruby"
@@ -29,9 +29,15 @@
         eval "$(mise activate bash)"
       fi
 
-      # Omarchy bash layer
-      if [ -f "$HOME/.local/share/omarchy/default/bash/rc" ]; then
-        . "$HOME/.local/share/omarchy/default/bash/rc"
+      # Omarchy bash layer (Omarchy 4 package-managed location)
+      if [ -r /usr/share/omarchy/default/bash/env-bootstrap ]; then
+        . /usr/share/omarchy/default/bash/env-bootstrap
+      fi
+
+      if [ -n "$OMARCHY_PATH" ] && [ -f "$OMARCHY_PATH/default/bash/rc" ]; then
+        . "$OMARCHY_PATH/default/bash/rc"
+      elif [ -f /usr/share/omarchy/default/bash/rc ]; then
+        . /usr/share/omarchy/default/bash/rc
       fi
 
       # Shared aliases file (from dotfiles)
