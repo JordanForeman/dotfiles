@@ -44,6 +44,9 @@
       if [ -f "$HOME/.aliases" ]; then
         . "$HOME/.aliases"
       fi
+
+      # Pi uses the npm-installed Node CLI; avoid mise's standalone Bun binary.
+      export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
     '';
   };
 

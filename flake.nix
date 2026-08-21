@@ -109,6 +109,9 @@
         if command -v mise >/dev/null 2>&1; then
           eval "$(mise activate zsh)"
         fi
+
+        # Pi uses the npm-installed Node CLI; avoid mise's standalone Bun binary.
+        export PATH="$HOME/.npm-global/bin:$PATH"
       '';
     };
 
