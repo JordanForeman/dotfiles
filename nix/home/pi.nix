@@ -166,6 +166,7 @@ in
     home.file.".pi/agent/extensions/theme-switcher.ts".source = piAgentRoot + "/extensions/theme-switcher.ts";
     home.file.".pi/agent/extensions/pi-ask.ts".source = piAgentRoot + "/extensions/pi-ask.ts";
     home.file.".pi/agent/extensions/ralph-loop.ts".source = piAgentRoot + "/extensions/ralph-loop.ts";
+    home.file.".pi/agent/extensions/ralph-output-summary.mjs".source = piAgentRoot + "/extensions/ralph-output-summary.mjs";
     home.file.".pi/agent/extensions/discipline-gate.ts".source = piAgentRoot + "/extensions/discipline-gate.ts";
     home.file.".pi/agent/extensions/linear.ts".source = piAgentRoot + "/extensions/linear.ts";
     home.file.".pi/agent/extension-core" = {
