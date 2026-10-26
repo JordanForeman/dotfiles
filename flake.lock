@@ -142,11 +142,11 @@
     "pi-agent": {
       "flake": false,
       "locked": {
-        "lastModified": 1793030013,
-        "narHash": "sha256-k0hKvMCfBdY8LX4FqyFhw6ZIjSfqXZSdEPyVftn0xXU=",
-        "ref": "refs/heads/main",
-        "rev": "2af6a0e5aa7563b0735e6ffb34369542c672bd9b",
-        "revCount": 23,
+        "lastModified": 1793040762,
+        "narHash": "sha256-5uhWCmG5GH/XPjYHJgPMMx7GEMY2NJiZitbove3Fagk=",
+        "ref": "main",
+        "rev": "474e1800e42d0a5bb663574fe24cc50f7d47ae79",
+        "revCount": 27,
         "type": "git",
         "url": "ssh://git@github.com/JordanForeman/pi-agent.git"
       },
